@@ -8,14 +8,16 @@ function required(name: string): string {
   return v;
 }
 
+const FOUNDRY_API_KEY = required('AZURE_FOUNDRY_API_KEY');
+
 function makeProvider(baseURL: string) {
+  // Foundry uses the "api-key" header, not "Authorization: Bearer". We must NOT pass
+  // `apiKey` to createOpenAICompatible — that would inject an Authorization header
+  // alongside our custom one, which Foundry rejects. Only `headers` is set.
   return createOpenAICompatible({
     name: 'azure-foundry',
     baseURL,
-    apiKey: required('AZURE_FOUNDRY_API_KEY'),
-    // Azure AI Foundry expects "api-key" header rather than "Authorization: Bearer".
-    // The provider forwards `apiKey` via Authorization by default; override the header here.
-    headers: { 'api-key': required('AZURE_FOUNDRY_API_KEY') },
+    headers: { 'api-key': FOUNDRY_API_KEY },
   });
 }
 

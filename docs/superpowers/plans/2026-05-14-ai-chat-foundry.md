@@ -167,10 +167,12 @@ git commit -m "chore: scaffold Next.js 16 + Tailwind v4 + Biome"
 
 ```bash
 pnpm add ai @ai-sdk/react @ai-sdk/openai-compatible \
-  drizzle-orm @vercel/postgres \
+  drizzle-orm postgres \
   swr next-themes sonner date-fns zod
 pnpm add -D drizzle-kit @types/node
 ```
+
+(Note: `@vercel/postgres` is not available in our registry mirror, so we use `postgres` (postgres-js) here. Connection string is identical.)
 
 - [ ] **Step 2: Write `.env.example`**
 
@@ -276,12 +278,16 @@ export type NewDbMessage = typeof messages.$inferInsert;
 
 Create `lib/db/client.ts`:
 ```ts
-import { sql } from '@vercel/postgres';
-import { drizzle } from 'drizzle-orm/vercel-postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import * as schema from './schema';
 
-export const db = drizzle(sql, { schema });
+// postgres-js client. `max: 1` keeps things simple for serverless/edge; bump for higher-concurrency runtimes.
+const queryClient = postgres(process.env.POSTGRES_URL!, { max: 1 });
+export const db = drizzle(queryClient, { schema });
 ```
+
+(Note: original plan called for `@vercel/postgres`, but that package isn't in our registry mirror. `postgres-js` is the substitute — same Neon/Vercel-Postgres connection string works.)
 
 - [ ] **Step 3: Write `drizzle.config.ts`**
 
@@ -484,14 +490,16 @@ function required(name: string): string {
   return v;
 }
 
+const FOUNDRY_API_KEY = required('AZURE_FOUNDRY_API_KEY');
+
 function makeProvider(baseURL: string) {
+  // Foundry uses the "api-key" header, not "Authorization: Bearer". We must NOT pass
+  // `apiKey` to createOpenAICompatible — that would inject an Authorization header
+  // alongside our custom one, which Foundry rejects. Only `headers` is set.
   return createOpenAICompatible({
     name: 'azure-foundry',
     baseURL,
-    apiKey: required('AZURE_FOUNDRY_API_KEY'),
-    // Azure AI Foundry expects "api-key" header rather than "Authorization: Bearer".
-    // The provider forwards `apiKey` via Authorization by default; override the header here.
-    headers: { 'api-key': required('AZURE_FOUNDRY_API_KEY') },
+    headers: { 'api-key': FOUNDRY_API_KEY },
   });
 }
 
