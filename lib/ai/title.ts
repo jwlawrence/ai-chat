@@ -1,6 +1,6 @@
 import { generateText, type UIMessage } from 'ai';
 import { getModel } from './providers';
-import type { ModelId } from './models';
+import { isModelId, type ModelId } from './models';
 
 const TITLE_INSTRUCTION = `You are a title generator. Read the conversation and produce a short (max 6 words) descriptive title. Return only the title text, no quotes, no punctuation at the end.`;
 
@@ -12,7 +12,8 @@ function flattenText(msg: UIMessage): string {
 }
 
 export async function generateTitle(messages: UIMessage[]): Promise<string> {
-  const modelId = (process.env.TITLE_MODEL ?? 'kimi-k2.6') as ModelId;
+  const raw = process.env.TITLE_MODEL ?? 'kimi-k2.6';
+  const modelId: ModelId = isModelId(raw) ? raw : 'kimi-k2.6';
   const conversation = messages
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .slice(0, 4)
