@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import { db } from './client';
 import { messages, sessions, type NewDbMessage, type Session } from './schema';
@@ -59,10 +59,14 @@ export async function appendMessages(
 }
 
 export async function countMessages(sessionId: string): Promise<number> {
-  const rows = await db.select({ id: messages.id }).from(messages).where(eq(messages.sessionId, sessionId));
-  return rows.length;
+  const [row] = await db
+    .select({ value: count() })
+    .from(messages)
+    .where(eq(messages.sessionId, sessionId));
+  return row?.value ?? 0;
 }
 
+// Deletes the `n` most-recently-created messages in the session. No-op if n <= 0.
 export async function trimTrailingMessages(sessionId: string, n: number): Promise<void> {
   if (n <= 0) return;
   const rows = await db
