@@ -32,7 +32,11 @@ const BodySchema = z.object({
 const CONTEXT_WINDOW = Number.parseInt(process.env.CONTEXT_WINDOW_MESSAGES ?? '50', 10);
 
 export async function POST(req: Request) {
-  const body = BodySchema.parse(await req.json());
+  const parsed = BodySchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return new Response('Bad request', { status: 400 });
+  }
+  const body = parsed.data;
   const incoming = body.messages as UIMessage[];
 
   // Resolve session + model
@@ -92,14 +96,21 @@ export async function POST(req: Request) {
       // `req.signal.aborted` is the authoritative check; it flips true on client disconnect.
       if (req.signal.aborted || !responseMessage) return;
 
-      if (trimCount > 0) {
-        await trimTrailingMessages(sessionId, trimCount);
+      // Persistence errors after stream completion can't be surfaced to the client
+      // (response is already closed), so at minimum log them prominently.
+      try {
+        if (trimCount > 0) {
+          await trimTrailingMessages(sessionId, trimCount);
+        }
+        await appendMessages(sessionId, [
+          ...newUserMessages.map((m) => ({ role: m.role, parts: m.parts })),
+          { role: responseMessage.role, parts: responseMessage.parts },
+        ]);
+        await touchSession(sessionId);
+      } catch (err) {
+        console.error('persistence failed — turn will not appear in history', err);
+        return;
       }
-      await appendMessages(sessionId, [
-        ...newUserMessages.map((m) => ({ role: m.role, parts: m.parts })),
-        { role: responseMessage.role, parts: responseMessage.parts },
-      ]);
-      await touchSession(sessionId);
 
       // First turn → generate a title.
       if (isNewSession) {
