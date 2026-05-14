@@ -22,9 +22,7 @@ export function ModelDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={
-          <Button variant="ghost" size="sm" disabled={disabled} className="gap-1" />
-        }
+        render={<Button variant="ghost" size="sm" disabled={disabled} className="gap-1" />}
       >
         {MODEL_LABELS[value]}
         <ChevronDown className="size-3.5 opacity-60" />

@@ -81,9 +81,7 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
           model={model}
           modelLocked={modelLocked}
           onModelChange={setModel}
-          onSubmit={(text) =>
-            sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
-          }
+          onSubmit={(text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })}
           onStop={stop}
         />
       </div>

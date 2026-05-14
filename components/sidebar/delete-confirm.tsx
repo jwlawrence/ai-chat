@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { mutate } from 'swr';

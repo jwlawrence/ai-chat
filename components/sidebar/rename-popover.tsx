@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, type ReactNode, useState } from 'react';
+import { type ReactElement, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,7 +52,9 @@ export function RenamePopover({
             }}
             autoFocus
           />
-          <Button size="sm" onClick={save}>Save</Button>
+          <Button size="sm" onClick={save}>
+            Save
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

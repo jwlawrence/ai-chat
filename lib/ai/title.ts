@@ -25,5 +25,10 @@ export async function generateTitle(messages: UIMessage[]): Promise<string> {
     system: TITLE_INSTRUCTION,
     prompt: conversation,
   });
-  return text.trim().replace(/^["']|["']$/g, '').slice(0, 80) || 'New chat';
+  return (
+    text
+      .trim()
+      .replace(/^["']|["']$/g, '')
+      .slice(0, 80) || 'New chat'
+  );
 }

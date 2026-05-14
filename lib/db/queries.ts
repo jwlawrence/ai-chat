@@ -18,10 +18,7 @@ export async function createSession(input: { model: string }): Promise<Session> 
 }
 
 export async function renameSession(id: string, title: string): Promise<void> {
-  await db
-    .update(sessions)
-    .set({ title, updatedAt: new Date() })
-    .where(eq(sessions.id, id));
+  await db.update(sessions).set({ title, updatedAt: new Date() }).where(eq(sessions.id, id));
 }
 
 export async function touchSession(id: string): Promise<void> {
@@ -77,6 +74,9 @@ export async function trimTrailingMessages(sessionId: string, n: number): Promis
     .limit(n);
   if (rows.length === 0) return;
   await db.delete(messages).where(
-    inArray(messages.id, rows.map((r) => r.id)),
+    inArray(
+      messages.id,
+      rows.map((r) => r.id),
+    ),
   );
 }

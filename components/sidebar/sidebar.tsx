@@ -11,7 +11,9 @@ import { SidebarList } from './sidebar-list';
 function Header() {
   return (
     <div className="flex items-center justify-between border-b px-3 py-2">
-      <Link href="/chat" className="text-sm font-semibold">AI Chat</Link>
+      <Link href="/chat" className="text-sm font-semibold">
+        AI Chat
+      </Link>
       <ThemeToggle />
     </div>
   );

@@ -10,7 +10,9 @@ export function bucketFor(d: Date | string): DateBucket {
   return 'Older';
 }
 
-export function groupByBucket<T extends { updatedAt: string | Date }>(items: T[]): Array<{
+export function groupByBucket<T extends { updatedAt: string | Date }>(
+  items: T[],
+): Array<{
   bucket: DateBucket;
   items: T[];
 }> {
@@ -22,5 +24,8 @@ export function groupByBucket<T extends { updatedAt: string | Date }>(items: T[]
     list.push(it);
     map.set(b, list);
   }
-  return order.filter((b) => map.has(b)).map((b) => ({ bucket: b, items: map.get(b)! }));
+  return order.flatMap((b) => {
+    const groupItems = map.get(b);
+    return groupItems ? [{ bucket: b, items: groupItems }] : [];
+  });
 }

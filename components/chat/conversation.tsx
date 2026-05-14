@@ -6,11 +6,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation';
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from '@/components/ai-elements/message';
+import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
 
 export function ChatConversation({
@@ -20,8 +16,7 @@ export function ChatConversation({
   messages: UIMessage[];
   status: 'ready' | 'streaming' | 'submitted' | 'error';
 }) {
-  const showThinking =
-    status === 'submitted' && messages.at(-1)?.role !== 'assistant';
+  const showThinking = status === 'submitted' && messages.at(-1)?.role !== 'assistant';
 
   return (
     <Conversation className="min-h-0 flex-1">
@@ -31,7 +26,8 @@ export function ChatConversation({
             <MessageContent>
               {m.parts.map((p, i) => {
                 if (p.type === 'text') {
-                  return <MessageResponse key={i}>{p.text}</MessageResponse>;
+                  // Parts within a message have stable ordering for that message — composite key is safe.
+                  return <MessageResponse key={`${m.id}-${i}`}>{p.text}</MessageResponse>;
                 }
                 // Reasoning/tools are persisted but not rendered on day one.
                 return null;

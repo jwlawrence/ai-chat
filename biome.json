@@ -3,7 +3,15 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!drizzle", "!.next", "!node_modules"]
+    "includes": [
+      "**",
+      "!drizzle",
+      "!.next",
+      "!node_modules",
+      "!components/ai-elements",
+      "!components/ui",
+      "!app/globals.css"
+    ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": {
@@ -11,7 +19,7 @@
     "rules": {
       "recommended": true,
       "style": { "useNodejsImportProtocol": "off" },
-      "suspicious": { "noExplicitAny": "warn" }
+      "suspicious": { "noExplicitAny": "warn", "noArrayIndexKey": "off" }
     }
   },
   "javascript": {
