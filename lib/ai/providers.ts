@@ -22,20 +22,16 @@ function makeProvider(baseURL: string) {
 }
 
 const gpt = makeProvider(required('AZURE_FOUNDRY_GPT_URL'));
-const kimi = makeProvider(required('AZURE_FOUNDRY_KIMI_URL'));
 
 // Foundry deployments use the deployment name as the model identifier.
-// Adjust these strings if your deployment names differ.
+// Adjust this string if your deployment name differs.
 const FOUNDRY_DEPLOYMENT_NAMES: Record<ModelId, string> = {
   'gpt-5.3': 'gpt-5.3',
-  'kimi-k2.6': 'kimi-k2.6',
 };
 
 export function getModel(id: ModelId): LanguageModel {
   switch (id) {
     case 'gpt-5.3':
       return gpt.chatModel(FOUNDRY_DEPLOYMENT_NAMES[id]);
-    case 'kimi-k2.6':
-      return kimi.chatModel(FOUNDRY_DEPLOYMENT_NAMES[id]);
   }
 }

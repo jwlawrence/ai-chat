@@ -1,6 +1,6 @@
 # AI Chat (Foundry)
 
-Single-user Next.js chat against Azure AI Foundry deployments (GPT-5.3+ and Kimi K2.6) with Postgres-backed session save/load.
+Single-user Next.js chat against an Azure AI Foundry deployment (GPT-5.3+) with Postgres-backed session save/load.
 
 ## Setup
 
@@ -16,11 +16,9 @@ pnpm dev
 ## Env vars
 
 - `POSTGRES_URL` — Neon / Vercel Postgres connection string.
-- `AZURE_FOUNDRY_API_KEY` — single key reused for both Foundry deployments.
+- `AZURE_FOUNDRY_API_KEY` — Foundry API key.
 - `AZURE_FOUNDRY_GPT_URL` — base URL for the GPT-5.3+ deployment (the `…/models` root).
-- `AZURE_FOUNDRY_KIMI_URL` — base URL for the Kimi K2.6 deployment.
 - `CONTEXT_WINDOW_MESSAGES` — sliding window size (default 50).
-- `TITLE_MODEL` — model used for the auto-title call (default `kimi-k2.6`).
 
 ## Notes
 

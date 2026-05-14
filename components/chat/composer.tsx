@@ -12,8 +12,10 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
-import type { ModelId } from '@/lib/ai/models';
+import { MODEL_IDS, type ModelId } from '@/lib/ai/models';
 import { ModelDropdown } from './model-dropdown';
+
+const SHOW_MODEL_PICKER = MODEL_IDS.length > 1;
 
 export function Composer({
   status,
@@ -49,9 +51,13 @@ export function Composer({
           placeholder="Send a message..."
         />
         <PromptInputFooter>
-          <PromptInputTools>
-            <ModelDropdown value={model} onChange={onModelChange} disabled={modelLocked} />
-          </PromptInputTools>
+          {SHOW_MODEL_PICKER ? (
+            <PromptInputTools>
+              <ModelDropdown value={model} onChange={onModelChange} disabled={modelLocked} />
+            </PromptInputTools>
+          ) : (
+            <div />
+          )}
           {isBusy ? (
             <Button type="button" size="icon" variant="ghost" onClick={onStop} aria-label="Stop">
               <Square className="size-4" />
