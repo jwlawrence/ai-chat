@@ -671,19 +671,19 @@ export async function POST(req: Request) {
     isNewSession = true;
   }
 
-  // Build the message list sent to the model: sliding window over history.
-  // useChat sends the full client-side history per request. For regenerate,
-  // useChat has already stripped the trailing assistant message before sending.
-  const windowed = incoming.slice(-CONTEXT_WINDOW);
-
   // Reconcile incoming history vs DB so persistence is correct for send AND regenerate.
+  // Use `incoming` (full client history) for reconciliation — NOT `windowed` (which is
+  // truncated for the model). Otherwise long sessions would falsely trim in-DB messages.
   // - Normal send:        incoming.length = db.length + 1   → trim 0, append the new user msg
   // - Regenerate:         incoming.length = db.length - 1   → trim 1 (old assistant), no new user msg
   // - Error retry/etc.:   reduces to one of the above
-  // The trim happens only after a successful onFinish so that aborted/error turns leave history untouched.
+  // The trim happens only after a successful onFinish so aborted/error turns don't disturb history.
   const dbCount = isNewSession ? 0 : await countMessages(sessionId);
-  const trimCount = Math.max(0, dbCount - windowed.length);
-  const newUserMessages = windowed.slice(dbCount - trimCount); // [] when regenerating, else trailing user msgs
+  const trimCount = Math.max(0, dbCount - incoming.length);
+  const newUserMessages = incoming.slice(dbCount - trimCount); // [] when regenerating, else trailing user msgs
+
+  // The view sent to the model: sliding window of the most recent messages.
+  const windowed = incoming.slice(-CONTEXT_WINDOW);
 
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
