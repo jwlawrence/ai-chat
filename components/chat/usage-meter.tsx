@@ -5,11 +5,9 @@ import type { ModelId } from '@/lib/ai/models';
 import { estimateCostUSD, MODEL_PRICING } from '@/lib/ai/pricing';
 import { cn } from '@/lib/utils';
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
+function fmtPct(p: number): string {
+  if (p > 0 && p < 1) return '<1%';
+  return `${Math.round(p)}%`;
 }
 
 function fmtCost(n: number): string {
@@ -49,7 +47,7 @@ export function UsageMeter({
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="tabular-nums">{fmtTokens(used)}</span>
+        <span className="tabular-nums">{fmtPct(pct)}</span>
       </div>
       <span className="tabular-nums" title={`$${cost.toFixed(4)} so far`}>
         {fmtCost(cost)}
