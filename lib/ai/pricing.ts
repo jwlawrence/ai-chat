@@ -15,16 +15,28 @@ export type ModelPricing = {
 
 export const MODEL_PRICING: Record<ModelId, ModelPricing> = {
   'gpt-5.4': {
-    inputPer1M: 1.25,
-    outputPer1M: 10.0,
-    cachedInputPer1M: 0.125,
+    inputPer1M: 2.50,
+    outputPer1M: 15.0,
+    cachedInputPer1M: 0.25,
+    maxContextTokens: 400_000,
+  },
+  'gpt-5.4-mini': {
+    inputPer1M: 0.75,
+    outputPer1M: 4.50,
+    cachedInputPer1M: 0.08,
     maxContextTokens: 400_000,
   },
   'gpt-5.3-codex': {
-    inputPer1M: 1.25,
-    outputPer1M: 10.0,
-    cachedInputPer1M: 0.125,
+    inputPer1M: 1.75,
+    outputPer1M: 14.0,
+    cachedInputPer1M: 0.18,
     maxContextTokens: 400_000,
+  },
+  'o4-mini': {
+    inputPer1M: 1.1,
+    outputPer1M: 4.4,
+    cachedInputPer1M: 0.28,
+    maxContextTokens: 200_000,
   },
 };
 

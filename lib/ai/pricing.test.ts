@@ -17,24 +17,26 @@ describe('estimateCostUSD', () => {
   });
 
   it('charges input + output at full rate when nothing is cached', () => {
-    // gpt-5.4: $1.25/1M in, $10/1M out.
+    // Compute expected from the actual table so test stays correct as rates evolve.
+    const p = MODEL_PRICING['gpt-5.4'];
     const cost = estimateCostUSD('gpt-5.4', {
       tokensIn: 1_000_000,
       tokensOut: 1_000_000,
       tokensCached: 0,
     });
-    expect(cost).toBeCloseTo(11.25, 6);
+    expect(cost).toBeCloseTo(p.inputPer1M + p.outputPer1M, 6);
   });
 
   it('discounts the cached portion of input', () => {
-    // 1M input of which 800k is cached. Billable input = 200k @ $1.25/1M = $0.25
-    // Cached = 800k @ $0.125/1M = $0.10. Output = 0.
+    // 1M input of which 800k is cached.
+    const p = MODEL_PRICING['gpt-5.4'];
     const cost = estimateCostUSD('gpt-5.4', {
       tokensIn: 1_000_000,
       tokensOut: 0,
       tokensCached: 800_000,
     });
-    expect(cost).toBeCloseTo(0.25 + 0.1, 6);
+    const expected = 0.2 * p.inputPer1M + 0.8 * p.cachedInputPer1M;
+    expect(cost).toBeCloseTo(expected, 6);
   });
 
   it('handles cachedInput >= tokensIn gracefully (clamps billable input to 0)', () => {
