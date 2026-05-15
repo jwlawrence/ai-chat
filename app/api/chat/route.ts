@@ -12,6 +12,7 @@ import { getModel } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
+import { reconcileIncoming } from '@/lib/chat/reconcile';
 import {
   appendMessages,
   countMessages,
@@ -63,13 +64,9 @@ export async function POST(req: Request) {
   // Reconcile incoming history vs DB so persistence is correct for send AND regenerate.
   // Use `incoming` (full client history) for reconciliation — NOT `windowed` (which is
   // truncated for the model). Otherwise long sessions would falsely trim in-DB messages.
-  // - Normal send:        incoming.length = db.length + 1   → trim 0, append the new user msg
-  // - Regenerate:         incoming.length = db.length - 1   → trim 1 (old assistant), no new user msg
-  // - Error retry/etc.:   reduces to one of the above
   // The trim happens only after a successful onFinish so aborted/error turns don't disturb history.
   const dbCount = isNewSession ? 0 : await countMessages(sessionId);
-  const trimCount = Math.max(0, dbCount - incoming.length);
-  const newUserMessages = incoming.slice(dbCount - trimCount); // [] when regenerating, else trailing user msgs
+  const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
 
   // The view sent to the model: sliding window of the most recent messages.
   const windowed = incoming.slice(-CONTEXT_WINDOW);
