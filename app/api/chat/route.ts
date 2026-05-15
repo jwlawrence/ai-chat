@@ -2,6 +2,7 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  stepCountIs,
   streamText,
   type UIMessage,
 } from 'ai';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 import { DEFAULT_MODEL, isModelId, type ModelId } from '@/lib/ai/models';
 import { getModel } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
+import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
 import {
   appendMessages,
@@ -86,6 +88,9 @@ export async function POST(req: Request) {
         model: getModel(model),
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
+        tools: { webSearch },
+        // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
+        stopWhen: stepCountIs(5),
         abortSignal: req.signal,
       });
       writer.merge(result.toUIMessageStream());

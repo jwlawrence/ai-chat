@@ -1,4 +1,4 @@
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { createAzure } from '@ai-sdk/azure';
 import type { LanguageModel } from 'ai';
 import type { ModelId } from './models';
 
@@ -8,30 +8,17 @@ function required(name: string): string {
   return v;
 }
 
-const FOUNDRY_API_KEY = required('AZURE_FOUNDRY_API_KEY');
+const azure = createAzure({
+  baseURL: required('AZURE_FOUNDRY_BASE_URL'),
+  apiKey: required('AZURE_FOUNDRY_API_KEY'),
+  apiVersion: process.env.AZURE_FOUNDRY_API_VERSION ?? '2025-04-01-preview',
+});
 
-function makeProvider(baseURL: string) {
-  // Foundry uses the "api-key" header, not "Authorization: Bearer". We must NOT pass
-  // `apiKey` to createOpenAICompatible — that would inject an Authorization header
-  // alongside our custom one, which Foundry rejects. Only `headers` is set.
-  return createOpenAICompatible({
-    name: 'azure-foundry',
-    baseURL,
-    headers: { 'api-key': FOUNDRY_API_KEY },
-  });
-}
-
-const gpt = makeProvider(required('AZURE_FOUNDRY_GPT_URL'));
-
-// Foundry deployments use the deployment name as the model identifier.
-// Adjust this string if your deployment name differs.
+// Foundry deployments are addressed by deployment name, not OpenAI model id.
 const FOUNDRY_DEPLOYMENT_NAMES: Record<ModelId, string> = {
-  'gpt-5.3': 'gpt-5.3',
+  'gpt-5.4': 'gpt-5.4',
 };
 
 export function getModel(id: ModelId): LanguageModel {
-  switch (id) {
-    case 'gpt-5.3':
-      return gpt.chatModel(FOUNDRY_DEPLOYMENT_NAMES[id]);
-  }
+  return azure.responses(FOUNDRY_DEPLOYMENT_NAMES[id]);
 }
