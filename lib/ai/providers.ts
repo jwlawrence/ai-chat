@@ -17,6 +17,7 @@ const azure = createAzure({
 // Foundry deployments are addressed by deployment name, not OpenAI model id.
 const FOUNDRY_DEPLOYMENT_NAMES: Record<ModelId, string> = {
   'gpt-5.4': 'gpt-5.4',
+  'gpt-5.3-codex': 'gpt-5.3-codex',
 };
 
 export function getModel(id: ModelId): LanguageModel {

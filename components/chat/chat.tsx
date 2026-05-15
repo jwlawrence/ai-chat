@@ -3,7 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import type { UIMessage } from 'ai';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from 'swr';
 import { DEFAULT_MODEL, type ModelId } from '@/lib/ai/models';
 import { Composer } from './composer';
@@ -20,19 +20,30 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
   const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId);
   const [model, setModel] = useState<ModelId>(initialModel ?? DEFAULT_MODEL);
 
+  // useChat captures the transport on mount, so its prepareSendMessagesRequest closure can
+  // go stale on later renders. Build the transport once and let it read live values from refs.
+  const sessionIdRef = useRef(sessionId);
+  const modelRef = useRef(model);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+  useEffect(() => {
+    modelRef.current = model;
+  }, [model]);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
         api: '/api/chat',
         prepareSendMessagesRequest: ({ messages }) => ({
           body: {
-            sessionId,
-            model,
+            sessionId: sessionIdRef.current,
+            model: modelRef.current,
             messages,
           },
         }),
       }),
-    [sessionId, model],
+    [],
   );
 
   const { messages, sendMessage, status, error, regenerate, stop } = useChat({
