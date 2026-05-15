@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { MODEL_IDS, type ModelId } from '@/lib/ai/models';
 import { ModelDropdown } from './model-dropdown';
+import { UsageMeter } from './usage-meter';
 
 const SHOW_MODEL_PICKER = MODEL_IDS.length > 1;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -77,6 +78,7 @@ export function Composer({
   status,
   model,
   modelLocked,
+  sessionId,
   onModelChange,
   onSubmit,
   onStop,
@@ -84,6 +86,7 @@ export function Composer({
   status: 'ready' | 'streaming' | 'submitted' | 'error';
   model: ModelId;
   modelLocked: boolean;
+  sessionId: string | undefined;
   onModelChange: (m: ModelId) => void;
   onSubmit: (message: PromptInputMessage) => void;
   onStop: () => void;
@@ -119,6 +122,7 @@ export function Composer({
           {SHOW_MODEL_PICKER ? (
             <ModelDropdown value={model} onChange={onModelChange} disabled={modelLocked} />
           ) : null}
+          <UsageMeter sessionId={sessionId} model={model} />
         </PromptInputTools>
         {isBusy ? (
           <Button type="button" size="icon" variant="ghost" onClick={onStop} aria-label="Stop">

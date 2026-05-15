@@ -1,4 +1,4 @@
-import { asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import { db } from './client';
 import { messages, sessions, type NewDbMessage, type Session } from './schema';
@@ -23,6 +23,21 @@ export async function renameSession(id: string, title: string): Promise<void> {
 
 export async function touchSession(id: string): Promise<void> {
   await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, id));
+}
+
+export async function addUsageToSession(
+  id: string,
+  usage: { tokensIn: number; tokensOut: number; tokensCached: number },
+): Promise<void> {
+  await db
+    .update(sessions)
+    .set({
+      tokensIn: sql`${sessions.tokensIn} + ${usage.tokensIn}`,
+      tokensOut: sql`${sessions.tokensOut} + ${usage.tokensOut}`,
+      tokensCached: sql`${sessions.tokensCached} + ${usage.tokensCached}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(sessions.id, id));
 }
 
 export async function deleteSession(id: string): Promise<void> {

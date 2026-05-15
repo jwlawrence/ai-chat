@@ -96,6 +96,7 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
           status={status}
           model={model}
           modelLocked={modelLocked}
+          sessionId={sessionId}
           onModelChange={setModel}
           onSubmit={({ text, files }) =>
             sendMessage({

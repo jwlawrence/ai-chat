@@ -14,6 +14,7 @@ import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import {
+  addUsageToSession,
   appendMessages,
   countMessages,
   createSession,
@@ -89,6 +90,20 @@ export async function POST(req: Request) {
         // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
         stopWhen: stepCountIs(5),
         abortSignal: req.signal,
+        // Persist usage BEFORE the stream closes so the client's SWR mutate() in useChat's
+        // onFinish picks up fresh totals.
+        onFinish: async ({ totalUsage }) => {
+          if (req.signal.aborted) return;
+          try {
+            await addUsageToSession(sessionId, {
+              tokensIn: totalUsage.inputTokens ?? 0,
+              tokensOut: totalUsage.outputTokens ?? 0,
+              tokensCached: totalUsage.cachedInputTokens ?? 0,
+            });
+          } catch (err) {
+            console.error('usage persist failed', err);
+          }
+        },
       });
       writer.merge(result.toUIMessageStream());
     },
