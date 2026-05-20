@@ -494,6 +494,11 @@ export const PromptInput = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
+  // ----- Drag-over visual state. Counter tracks dragenter/leave across child elements
+  // so the overlay doesn't flicker as the cursor moves over inner nodes.
+  const dragDepthRef = useRef(0);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+
   // ----- Local attachments (only used when no provider)
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
   const files = usingProvider ? controller.attachments.files : items;
@@ -680,61 +685,51 @@ export const PromptInput = ({
     }
   }, [files, syncHiddenInput]);
 
-  // Attach drop handlers on nearest form and document (opt-in)
+  // Attach drag/drop handlers. When globalDrop, listen on document so a drop anywhere
+  // works; otherwise listen on the form. Either way we maintain isDraggingFiles for
+  // the overlay rendered inside the form.
   useEffect(() => {
-    const form = formRef.current;
-    if (!form) {
-      return;
-    }
-    if (globalDrop) {
-      // when global drop is on, let the document-level handler own drops
-      return;
-    }
+    const target: EventTarget | null = globalDrop ? document : formRef.current;
+    if (!target) return;
 
-    const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes('Files')) {
-        e.preventDefault();
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types?.includes('Files');
+
+    const onDragEnter = (e: Event) => {
+      const ev = e as DragEvent;
+      if (!hasFiles(ev)) return;
+      ev.preventDefault();
+      dragDepthRef.current += 1;
+      if (dragDepthRef.current === 1) setIsDraggingFiles(true);
+    };
+    const onDragLeave = (e: Event) => {
+      const ev = e as DragEvent;
+      if (!hasFiles(ev)) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+    };
+    const onDragOver = (e: Event) => {
+      const ev = e as DragEvent;
+      if (hasFiles(ev)) ev.preventDefault();
+    };
+    const onDrop = (e: Event) => {
+      const ev = e as DragEvent;
+      if (hasFiles(ev)) ev.preventDefault();
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+      if (ev.dataTransfer?.files && ev.dataTransfer.files.length > 0) {
+        add(ev.dataTransfer.files);
       }
     };
-    const onDrop = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes('Files')) {
-        e.preventDefault();
-      }
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-        add(e.dataTransfer.files);
-      }
-    };
-    form.addEventListener('dragover', onDragOver);
-    form.addEventListener('drop', onDrop);
+
+    target.addEventListener('dragenter', onDragEnter);
+    target.addEventListener('dragleave', onDragLeave);
+    target.addEventListener('dragover', onDragOver);
+    target.addEventListener('drop', onDrop);
     return () => {
-      form.removeEventListener('dragover', onDragOver);
-      form.removeEventListener('drop', onDrop);
-    };
-  }, [add, globalDrop]);
-
-  useEffect(() => {
-    if (!globalDrop) {
-      return;
-    }
-
-    const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes('Files')) {
-        e.preventDefault();
-      }
-    };
-    const onDrop = (e: DragEvent) => {
-      if (e.dataTransfer?.types?.includes('Files')) {
-        e.preventDefault();
-      }
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-        add(e.dataTransfer.files);
-      }
-    };
-    document.addEventListener('dragover', onDragOver);
-    document.addEventListener('drop', onDrop);
-    return () => {
-      document.removeEventListener('dragover', onDragOver);
-      document.removeEventListener('drop', onDrop);
+      target.removeEventListener('dragenter', onDragEnter);
+      target.removeEventListener('dragleave', onDragLeave);
+      target.removeEventListener('dragover', onDragOver);
+      target.removeEventListener('drop', onDrop);
     };
   }, [add, globalDrop]);
 
@@ -863,8 +858,21 @@ export const PromptInput = ({
         title="Upload files"
         type="file"
       />
-      <form className={cn('w-full', className)} onSubmit={handleSubmit} ref={formRef} {...props}>
+      <form
+        className={cn('relative w-full', className)}
+        onSubmit={handleSubmit}
+        ref={formRef}
+        {...props}
+      >
         <InputGroup className="overflow-hidden">{children}</InputGroup>
+        {isDraggingFiles ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-ring/50 bg-background/85 text-sm text-foreground backdrop-blur-sm duration-100 animate-in fade-in-0">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="size-4" />
+              Drop to attach
+            </div>
+          </div>
+        ) : null}
       </form>
     </>
   );
