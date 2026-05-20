@@ -51,8 +51,8 @@ function summariseZodError(error: z.ZodError): string {
 
 export const renderUI = tool({
   description: [
-    'Render a structured UI to the user by emitting a JSON spec. Call this tool whenever',
-    'the user asks for a UI, a form, a dashboard, a card, or any visual component.',
+    'Render a structured UI card inline in the chat by emitting a JSON spec. Call this when the user asks for a card, form, dashboard, comparison, or any structured visual layout.',
+    'This tool is fully self-contained: the complete component vocabulary, prop shapes, and authoring rules are documented below. Do NOT search the web for "renderUI" or "json-render" — there is no external API to reference; the schema below IS the spec.',
     catalogPrompt,
   ].join('\n\n'),
 
