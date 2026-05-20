@@ -1,6 +1,6 @@
 # Plan: json-render UI in chat
 
-> Source PRD: interactive UI rendered inline in chat via a single `renderUI` tool that emits a json-render spec. ~15 generic primitives in v1. Three action modes: model, local, endpoint.
+> Source PRD: interactive UI rendered inline in chat via a single `renderUI` tool that emits a json-render spec. 16 generic primitives in v1. Three action modes: model, local, endpoint.
 
 ## Architectural decisions
 
@@ -12,7 +12,7 @@ Durable choices that apply across all phases.
 - **Render replaces text**: when the model uses `renderUI`, the rendered card *is* the assistant turn — no separate text bubble. Contextual narrative must live inside the spec (`Heading`, `Callout`, etc.). Steering lives in `SYSTEM_PROMPT`.
 - **Streaming UX**: nothing renders until the tool input is fully streamed (`input-available`). The existing "Thinking…" spinner stays visible during input streaming.
 - **Validation**: `renderUI.execute` validates the spec envelope (Zod) and then runs a secondary catalog-props validation pass. Invalid spec → tool error → model retries within the existing `stepCountIs(5)` budget. Catalog Zod schemas are *not* part of the outer tool input schema; they are enforced as a follow-up pass.
-- **Catalog as source of truth**: components, their prop schemas, and action declarations all live in a single catalog. `catalog.prompt()` text is appended to the `renderUI` tool's description, not to `SYSTEM_PROMPT`.
+- **Catalog as source of truth**: components, their prop schemas, and action declarations all live in a single catalog. A custom `catalogPrompt` (built from the catalog via `buildCatalogPrompt()`) is appended to the `renderUI` tool's description, not to `SYSTEM_PROMPT`. *Note:* json-render's built-in `catalog.prompt()` targets a streaming JSONL-patch protocol incompatible with AI SDK single-shot tool calling, so we generate our own — see `lib/json-render/catalog.ts`.
 - **Action modes** (per-action tag in the catalog):
   - `local` — pure client-side; mutates json-render `StateProvider` state scoped to the rendered subtree. Model never sees the press.
   - `model` — fires a synthetic `role: 'user'` turn carrying both a styled chip in the transcript and an injected text representation for the model. **Card locks the instant the press is issued** to preempt double-fire.
@@ -35,16 +35,16 @@ Durable choices that apply across all phases.
 
 ### What to build
 
-End-to-end vertical slice that delivers the model's ability to render any UI it wants, with no action wiring yet. All ~15 primitives ship in this phase so the catalog is complete from day one; interactive primitives (Tabs, Accordion, Input) work via their *native* React state but do not yet emit json-render actions. The tracer cuts through tool definition, validation, route wiring, conversation rendering, and system prompt steering.
+End-to-end vertical slice that delivers the model's ability to render any UI it wants, with no action wiring yet. All 16 primitives ship in this phase so the catalog is complete from day one; interactive primitives (Tabs, Accordion, Input) work via their *native* React state but do not yet emit json-render actions. The tracer cuts through tool definition, validation, route wiring, conversation rendering, and system prompt steering.
 
-Catalog: `Card`, `Heading`, `Text`, `Image`, `Link`, `Button`, `List`, `Input`, `Select`, `Checkbox`, `Form`, `Tabs`, `Accordion`, `Callout`, `Badge`, `Divider`. Components are thin shadcn wrappers.
+Catalog: `Card`, `Heading`, `Text`, `Image`, `Link`, `Button`, `List`, `Input`, `Select`, `Checkbox`, `Form`, `Tabs`, `Accordion`, `Callout`, `Badge`, `Divider`. Components are thin shadcn wrappers. (Note: `Checkbox` uses shadcn `Switch` because the project's `base-nova` style uses `@base-ui/react` rather than radix and there is no shipped checkbox primitive.)
 
 ### Acceptance criteria
 
-- [ ] `@json-render/core` and `@json-render/react` installed; catalog defines all 15 primitives with Zod prop schemas.
+- [ ] `@json-render/core` and `@json-render/react` installed; catalog defines all 16 primitives with Zod prop schemas.
 - [ ] React registry maps every catalog component to a shadcn-styled implementation.
 - [ ] `renderUI` tool registered in `/api/chat` with a Zod envelope schema and `prepareStep` that removes the tool after first use.
-- [ ] Tool description includes `catalog.prompt()` text so the model knows what's available.
+- [ ] Tool description includes the custom `catalogPrompt` text (NOT `catalog.prompt()` — that targets a streaming patch protocol that fights with single-shot tool calling) so the model knows what's available.
 - [ ] Spec validation runs server-side: envelope Zod first, then catalog-props validation pass. Invalid spec returns a tool error.
 - [ ] Conversation renderer detects `tool-renderUI` parts and renders them via json-render's `Renderer`.
 - [ ] System prompt nudges the model to prefer `renderUI` when UI improves comprehension and to keep narrative *inside* the spec.
@@ -141,6 +141,24 @@ Tests, system prompt tightening, and edge-case handling. No new user-visible fea
 - [ ] Unit tests for per-card lock state: model-mode press locks; local-mode press does not; endpoint-mode press does not.
 - [ ] Unit tests for form-state stability: a spec patch to the same `root` id preserves in-progress input.
 - [ ] System prompt expanded with composition examples (when to nest, when to use `Form` vs raw `Input` rows, how to express "headline + list of items").
-- [ ] Manual verification of the streaming UX: long `renderUI` input streams keep the "Thinking…" spinner up; card materializes only on `input-available`.
+- [ ] Manual verification of the streaming UX: long `renderUI` input streams keep the "Thinking…" spinner up; card materializes only on `output-available`.
 - [ ] Manual verification of the recovery loop: a deliberately broken catalog-prop value produces a tool error and the model self-corrects within `stepCountIs(5)`.
-- [ ] One-line measurement of `catalog.prompt()` token cost added per request; logged in dev for awareness.
+- [ ] One-line measurement of `catalogPrompt` token cost added per request; logged in dev for awareness. (Custom prompt currently ~3.6 KB / ~900 tokens; was ~12.4 KB / ~3000 tokens when generated via `catalog.prompt()`.)
+
+### Phase 1 follow-ups (deferred polish from the initial vertical slice)
+
+**Visual / UX gaps surfaced during the manual demo:**
+
+- [ ] Card primitive surface contrast — `bg-card` matches the page background in the current light-mode theme, so the rendered card is almost invisible. Either bump the registry's Card wrapper to a more opinionated style (`bg-card/80 border` etc.) or update the theme tokens.
+- [ ] Image primitive sizing — current `width={800} height={450}` + `w-full object-cover` makes images dominate any card. Cap rendered height (e.g. `max-h-72`) or expose a size hint in the catalog.
+- [ ] "Annotated list" composition gap — when the user asks for "list of items each tagged with a badge" the model emits a `List` + a separate `Badge` row instead of an inline-annotated list. Either add a composite primitive (e.g. `BadgeList` or a list-item-with-badge construct) or strengthen the system prompt with an explicit example of how to express annotated lists with the existing primitives.
+- [ ] Streaming-gap spinner UX — the "Thinking…" spinner in `components/chat/conversation.tsx` (predicate `assistantHasVisibleContent`) flips off as soon as ANY `tool-<name>` part appears, including during `input-streaming`. For `tool-renderUI`, this leaves a blank message area for the seconds between input-streaming start and `output-available`. Exclude renderUI streaming/error states from the visible-content predicate so the spinner stays up. (Pre-existing issue for `tool-webSearch` too; the renderUI work made it more noticeable.)
+
+**Maintainability gaps flagged in Phase 1 code review (deferred to keep momentum):**
+
+- [ ] `prepareStep`'s `activeTools: ['webSearch']` in `app/api/chat/route.ts` is hardcoded. Derive from `Object.keys(tools).filter(n => n !== 'renderUI')` so the list stays in sync as new tools are added.
+- [ ] Extract the `alreadyRendered` predicate from `app/api/chat/route.ts` into a shared, importable helper (e.g. `hasRenderUICall(steps)` next to `renderUI`). Currently the route and `render-ui.test.ts` each carry their own copy of the same predicate, and the test cannot catch a route-side drift.
+- [ ] Dedicated unit test for `formatErrors` in `lib/ai/tools/render-ui.ts` — pin the bulleted output format and the cap-at-10 + `...and N more.` suffix. A silent reformat right now would not be caught.
+- [ ] `summariseZodError` in `lib/ai/tools/render-ui.ts` silently truncates at 3 issues without a trailing `...and N more.` indicator. Either remove the cap (per-element prop errors are typically few) or apply the same suffix pattern used by `formatErrors`.
+- [ ] `conversation.tsx` casts `p.output as Spec` without a runtime guard. The server-side validation pipeline is the contract, but a defensive client-side `validateSpec()` (or even a try/catch around the render) would prevent a malformed `output` from crashing the conversation tree.
+- [ ] Replace the `as Record<string, unknown>` cast in `render-ui.ts`'s `knownComponents` lookup with `new Set(Object.keys(catalog.data.components))` — cleaner, no cast needed.
