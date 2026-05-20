@@ -1,6 +1,8 @@
 'use client';
 
 import type { UIMessage } from 'ai';
+import { Renderer } from '@json-render/react';
+import type { Spec } from '@json-render/core';
 import { Globe, Sparkles } from 'lucide-react';
 import {
   Conversation,
@@ -9,6 +11,14 @@ import {
 } from '@/components/ai-elements/conversation';
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
+import { SpecRenderer, registry } from '@/lib/json-render/registry';
+
+/** Returns true when a message has at least one successfully-rendered renderUI part. */
+function messageHasRenderUI(m: UIMessage): boolean {
+  return (m.parts ?? []).some(
+    (p) => p.type === 'tool-renderUI' && p.state === 'output-available',
+  );
+}
 
 const SUGGESTIONS = [
   'Explain a tricky concept in plain English',
@@ -79,49 +89,65 @@ export function ChatConversation({
           <EmptyState onSuggest={onSuggest} />
         ) : (
           <>
-            {messages.map((m) => (
-              <Message key={m.id} from={m.role}>
-                <MessageContent>
-                  {m.parts.map((p, i) => {
-                    // Parts within a message have stable ordering for that message — composite key is safe.
-                    const key = `${m.id}-${i}`;
-                    if (p.type === 'text') {
-                      return <MessageResponse key={key}>{p.text}</MessageResponse>;
-                    }
-                    if (p.type === 'file' && p.mediaType?.startsWith('image/')) {
-                      return (
-                        // biome-ignore lint/performance/noImgElement: data/blob URLs aren't supported by next/image
-                        <img
-                          key={key}
-                          src={p.url}
-                          alt={p.filename ?? 'attachment'}
-                          className="max-h-80 max-w-full rounded-lg border border-border"
-                        />
-                      );
-                    }
-                    if (p.type === 'tool-webSearch') {
-                      const query = (p.input as { query?: string } | undefined)?.query;
-                      const isRunning =
-                        p.state === 'input-streaming' || p.state === 'input-available';
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted-foreground text-xs"
-                        >
-                          <Globe className="size-3.5" />
-                          <span>
-                            {isRunning ? 'Searching the web' : 'Searched the web'}
-                            {query ? `: "${query}"` : ''}
-                          </span>
-                        </div>
-                      );
-                    }
-                    // Reasoning and other tool parts are persisted but not rendered on day one.
-                    return null;
-                  })}
-                </MessageContent>
-              </Message>
-            ))}
+            {messages.map((m) => {
+              const hasRenderUI = messageHasRenderUI(m);
+              return (
+                <Message key={m.id} from={m.role}>
+                  <MessageContent>
+                    {m.parts.map((p, i) => {
+                      // Parts within a message have stable ordering for that message — composite key is safe.
+                      const key = `${m.id}-${i}`;
+                      if (p.type === 'text') {
+                        // Suppress text bubbles in a renderUI turn — the rendered card IS the response.
+                        if (hasRenderUI) return null;
+                        return <MessageResponse key={key}>{p.text}</MessageResponse>;
+                      }
+                      if (p.type === 'file' && p.mediaType?.startsWith('image/')) {
+                        return (
+                          // biome-ignore lint/performance/noImgElement: data/blob URLs aren't supported by next/image
+                          <img
+                            key={key}
+                            src={p.url}
+                            alt={p.filename ?? 'attachment'}
+                            className="max-h-80 max-w-full rounded-lg border border-border"
+                          />
+                        );
+                      }
+                      if (p.type === 'tool-webSearch') {
+                        const query = (p.input as { query?: string } | undefined)?.query;
+                        const isRunning =
+                          p.state === 'input-streaming' || p.state === 'input-available';
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-muted-foreground text-xs"
+                          >
+                            <Globe className="size-3.5" />
+                            <span>
+                              {isRunning ? 'Searching the web' : 'Searched the web'}
+                              {query ? `: "${query}"` : ''}
+                            </span>
+                          </div>
+                        );
+                      }
+                      if (p.type === 'tool-renderUI' && p.state === 'output-available') {
+                        const spec = p.output as Spec;
+                        return (
+                          <div key={key} data-spec-id={spec?.root}>
+                            <SpecRenderer spec={spec} registry={registry}>
+                              <Renderer spec={spec} registry={registry} />
+                            </SpecRenderer>
+                          </div>
+                        );
+                      }
+                      // Reasoning, streaming/error renderUI, and other tool parts are
+                      // persisted but not rendered.
+                      return null;
+                    })}
+                  </MessageContent>
+                </Message>
+              );
+            })}
             {showThinking ? (
               <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 text-muted-foreground text-sm">
                 <Spinner /> Thinking...
