@@ -58,13 +58,9 @@ export const catalog = defineCatalog(schema, {
       props: z.object({
         title: z.string().optional().describe('Optional heading displayed at the top of the card'),
         footer: z.string().optional().describe('Optional text rendered in the card footer'),
-        children: z
-          .array(z.string())
-          .optional()
-          .describe('Element keys to render as card body content'),
       }),
       description:
-        'A surface that groups related content. Children are element keys rendered inside the card body.',
+        'A surface that groups related content. Body content is supplied via the element-level `children` array.',
     },
 
     Heading: {
@@ -85,7 +81,7 @@ export const catalog = defineCatalog(schema, {
 
     Image: {
       props: z.object({
-        src: z.string().url().describe('Absolute URL of the image'),
+        src: z.string().url().describe('Must be an absolute URL starting with https://'),
         alt: z.string().describe('Alternative text for accessibility'),
         caption: z.string().optional(),
       }),
@@ -94,7 +90,7 @@ export const catalog = defineCatalog(schema, {
 
     Link: {
       props: z.object({
-        href: z.string().url().describe('Destination URL'),
+        href: z.string().url().describe('Must be an absolute URL starting with https://'),
         text: z.string().describe('Link label shown to the user'),
       }),
       description: 'A navigable hyperlink.',
@@ -110,7 +106,7 @@ export const catalog = defineCatalog(schema, {
         disabled: z.boolean().optional(),
       }),
       description:
-        'A clickable button. Actions will be wired in Phase 2; omit action-related props for now.',
+        'A clickable button. Action wiring is not yet supported; omit onClick/onSubmit props.',
     },
 
     List: {
@@ -154,17 +150,17 @@ export const catalog = defineCatalog(schema, {
     Form: {
       props: z.object({
         name: z.string().describe('Identifier for the form; used when submitting'),
-        children: z
-          .array(z.string())
-          .describe('Element keys for form fields and controls inside this form'),
       }),
       description:
-        'A form container. Submit actions will be wired in Phase 5; do not add action props yet.',
+        'A form container. Form fields are supplied via the element-level `children` array. Action wiring is not yet supported; omit onClick/onSubmit props.',
     },
 
     Tabs: {
       props: z.object({
-        tabs: z.array(tabItem).min(1).describe('Tab definitions; each tab contains its own children'),
+        tabs: z
+          .array(tabItem)
+          .min(1)
+          .describe('Tab definitions; each tab contains its own children'),
       }),
       description: 'A tabbed panel. Each tab has an id, a label, and an array of element keys.',
     },
@@ -227,8 +223,9 @@ export const catalog = defineCatalog(schema, {
 export function validateElementProps(
   componentName: string,
   props: unknown,
-): z.SafeParseReturnType<unknown, unknown> {
-  const entry = catalog.data.components[componentName];
+): z.ZodSafeParseResult<unknown> {
+  const components = catalog.data.components as Record<string, { props: z.ZodTypeAny } | undefined>;
+  const entry = components[componentName];
   if (!entry) {
     return z.never().safeParse(props);
   }
@@ -250,8 +247,8 @@ export const catalogPrompt: string = catalog.prompt({
   customRules: [
     'Use element keys that are short, kebab-case, and unique within a spec (e.g. "hero-heading", "submit-btn").',
     'Always set `root` to the key of the top-level element.',
-    'Children arrays contain element keys, not inline element objects.',
-    'Do not include action or event props — they will be added in a later phase.',
+    'Place child element keys in the element-level `children` array, not inside `props`. Children arrays contain element keys, not inline element objects.',
+    'Action wiring is not yet supported; omit onClick/onSubmit props and any event handlers.',
     'Omit optional props when the default behaviour is sufficient.',
   ],
 });

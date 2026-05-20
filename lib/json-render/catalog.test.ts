@@ -10,7 +10,7 @@ const validSpec = {
   elements: {
     'page-card': {
       type: 'Card',
-      props: { title: 'Welcome', children: ['hero-heading', 'intro-text', 'cta-btn', 'notice'] },
+      props: { title: 'Welcome' },
       children: ['hero-heading', 'intro-text', 'cta-btn', 'notice'],
     },
     'hero-heading': {
@@ -30,7 +30,7 @@ const validSpec = {
     },
     notice: {
       type: 'Callout',
-      props: { tone: 'info', title: 'Note', text: 'No action wiring yet — Phase 2 adds that.' },
+      props: { tone: 'info', title: 'Note', text: 'Action wiring is not yet supported.' },
       children: [],
     },
   },
@@ -155,32 +155,37 @@ describe('validateElementProps — invalid props fail', () => {
   it('rejects Heading with level 5 (out-of-range union)', () => {
     const result = validateElementProps('Heading', { level: 5, text: 'Bad heading' });
     expect(result.success).toBe(false);
-    expect((result as { error: unknown }).error).toBeDefined();
+    if (result.success) return; // narrow the discriminated union
+    expect(result.error.issues[0].path).toEqual(['level']);
   });
 
   it('rejects Callout with unknown tone "error"', () => {
     const result = validateElementProps('Callout', { tone: 'error', text: 'Something went wrong' });
     expect(result.success).toBe(false);
-    expect((result as { error: unknown }).error).toBeDefined();
+    if (result.success) return;
+    expect(result.error).toBeDefined();
   });
 
   it('rejects Button with unknown variant "danger"', () => {
     // Valid variants are primary|secondary|ghost|destructive — "danger" is not one
     const result = validateElementProps('Button', { label: 'Delete', variant: 'danger' });
     expect(result.success).toBe(false);
-    expect((result as { error: unknown }).error).toBeDefined();
+    if (result.success) return;
+    expect(result.error).toBeDefined();
   });
 
   it('rejects Select with empty options array (min(1) violated)', () => {
     const result = validateElementProps('Select', { name: 'colour', options: [] });
     expect(result.success).toBe(false);
-    expect((result as { error: unknown }).error).toBeDefined();
+    if (result.success) return;
+    expect(result.error).toBeDefined();
   });
 
   it('rejects Heading missing required "text" field', () => {
     const result = validateElementProps('Heading', { level: 1 });
     expect(result.success).toBe(false);
-    expect((result as { error: unknown }).error).toBeDefined();
+    if (result.success) return;
+    expect(result.error.issues[0].path).toEqual(['text']);
   });
 
   it('rejects an unknown component name', () => {
@@ -203,5 +208,14 @@ describe('catalogPrompt', () => {
     for (const name of catalog.componentNames) {
       expect(catalogPrompt).toContain(name);
     }
+  });
+
+  it('catalogPrompt fits within ~16 KB', () => {
+    // catalogPrompt is appended to the renderUI tool description on every chat
+    // turn, so a future inflation in @json-render/core would silently raise
+    // per-request token cost. Current measured length is ~12.4 KB; this bound
+    // (~1.3x) is sized to catch a 2x regression without flaking on minor
+    // wording tweaks.
+    expect(catalogPrompt.length).toBeLessThan(16000);
   });
 });
