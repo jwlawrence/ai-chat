@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { DEFAULT_MODEL, isModelId, type ModelId } from '@/lib/ai/models';
 import { getModel } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
+import { renderUI } from '@/lib/ai/tools/render-ui';
 import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
@@ -86,7 +87,18 @@ export async function POST(req: Request) {
         model: getModel(model),
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
-        tools: { webSearch },
+        tools: { webSearch, renderUI },
+        // Enforce one renderUI call per turn: once the tool has fired, strip it from subsequent
+        // steps so the model cannot re-render mid-turn. webSearch remains available throughout.
+        prepareStep: ({ steps }) => {
+          const alreadyRendered = steps.some((s) =>
+            s.toolCalls.some((c) => c.toolName === 'renderUI'),
+          );
+          if (alreadyRendered) {
+            return { activeTools: ['webSearch'] as const };
+          }
+          return undefined;
+        },
         // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
         stopWhen: stepCountIs(5),
         abortSignal: req.signal,
