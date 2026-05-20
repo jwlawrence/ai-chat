@@ -132,9 +132,15 @@ export function ChatConversation({
                       }
                       if (p.type === 'tool-renderUI' && p.state === 'output-available') {
                         const spec = p.output as Spec;
+                        // Pass the spec's optional `state` field as initialState so
+                        // that local-mode actions (e.g. setState) have the correct
+                        // starting values. JSONUIProvider's ActionProvider handles the
+                        // built-in `setState` action automatically — no custom handlers
+                        // map is needed for local-mode presses.
+                        const initialState = spec?.state ?? undefined;
                         return (
                           <div key={key} data-spec-id={spec?.root}>
-                            <JSONUIProvider registry={registry}>
+                            <JSONUIProvider registry={registry} initialState={initialState}>
                               <SpecRenderer spec={spec} registry={registry}>
                                 <Renderer spec={spec} registry={registry} />
                               </SpecRenderer>

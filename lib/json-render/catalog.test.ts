@@ -210,12 +210,12 @@ describe('catalogPrompt', () => {
     }
   });
 
-  it('catalogPrompt fits within ~5 KB', () => {
+  it('catalogPrompt fits within ~10 KB', () => {
     // catalogPrompt is appended to the renderUI tool description on every chat
-    // turn. The custom buildCatalogPrompt() helper targets single-shot tool-
-    // calling format (no JSONL/patch preamble), keeping it well under the old
-    // ~12 KB catalog.prompt() output. Current measured size is ~3.6 KB; this
-    // bound (~1.3x, rounded) catches regressions without flaking on wording tweaks.
-    expect(catalogPrompt.length).toBeLessThan(5000);
+    // turn. Phase 1 produced ~3.6 KB; Phase 2 added local-action docs (on.press,
+    // visible, state, a worked example) which grew it to ~6.5 KB. The bound is
+    // set to ~1.5x the current size to catch accidental regressions without
+    // flaking on minor wording tweaks. Still well below the old ~12 KB baseline.
+    expect(catalogPrompt.length).toBeLessThan(10_000);
   });
 });

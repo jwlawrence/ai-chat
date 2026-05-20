@@ -16,10 +16,10 @@
 
 import React, { createContext, useContext } from 'react';
 import NextImage from 'next/image';
-import { defineRegistry } from '@json-render/react';
+import { defineRegistry, useActions } from '@json-render/react';
 import type { ComponentFn } from '@json-render/react';
 import type { Spec } from '@json-render/core';
-import type { ComponentRegistry } from '@json-render/react';
+import type { ComponentRegistry, EventHandle } from '@json-render/react';
 
 import {
   InfoIcon,
@@ -80,6 +80,12 @@ export const SpecContext = createContext<SpecContextValue | null>(null);
  * Wrap `<Renderer>` with this provider so that Tabs / Accordion can render
  * their prop-level children.
  *
+ * Action wiring: SpecRenderer uses `useActions()` from the surrounding
+ * `ActionProvider` (mounted by `JSONUIProvider`) so that `on.press` bindings
+ * on Tabs/Accordion nested children dispatch through the same action context as
+ * the rest of the spec. The built-in `setState` action is handled automatically
+ * by `ActionProvider` — no custom handler is required for local-mode actions.
+ *
  * @example
  * ```tsx
  * <SpecRenderer spec={spec} registry={registry}>
@@ -96,6 +102,11 @@ export function SpecRenderer({
   registry: ComponentRegistry;
   children: React.ReactNode;
 }) {
+  // Grab the real action executor from ActionProvider (mounted by JSONUIProvider).
+  // This replaces the previous no-op stubs so that Tabs/Accordion nested children
+  // honour `on.press` bindings (e.g. setState) just like top-level elements.
+  const { execute } = useActions();
+
   const renderChildren = React.useCallback(
     (keys: string[]) =>
       keys.map((key) => {
@@ -105,15 +116,35 @@ export function SpecRenderer({
         if (!Comp) return null;
         // Recursively build children for this element
         const nested = el.children ? renderChildren(el.children) : undefined;
-        // Stubs: action wiring (mode: 'local' | 'model' | 'endpoint') lands in
-        // later phases. When ActionProvider is introduced, replace these with
-        // real dispatch.
+
+        // Build real emit/on functions that forward through ActionProvider.
+        // resolveActionParam is not called here (no repeat scope), so params
+        // are passed as-is — ActionProvider resolves them before dispatch.
+        const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown> }> | undefined;
+
+        const emit = (eventName: string): void => {
+          const binding = onBindings?.[eventName];
+          if (!binding) return;
+          // Fire and forget; errors surface to the console via ActionProvider.
+          void execute(binding);
+        };
+
+        const on = (eventName: string): EventHandle => {
+          const binding = onBindings?.[eventName];
+          if (!binding) return { emit: () => {}, shouldPreventDefault: false, bound: false };
+          return {
+            emit: () => { void execute(binding); },
+            shouldPreventDefault: false,
+            bound: true,
+          };
+        };
+
         return (
           <Comp
             key={key}
             element={el}
-            emit={() => {}}
-            on={() => ({ emit: () => {}, shouldPreventDefault: false, bound: false })}
+            emit={emit}
+            on={on}
             loading={false}
           >
             {nested}
@@ -121,7 +152,7 @@ export function SpecRenderer({
         );
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [spec, reg],
+    [spec, reg, execute],
   );
 
   return <SpecContext.Provider value={{ spec, renderChildren }}>{children}</SpecContext.Provider>;
@@ -238,12 +269,21 @@ export const { registry } = defineRegistry(catalog, {
     )) satisfies ComponentFn<typeof catalog, 'Link'>,
 
     // ---- Button -------------------------------------------------------------
-    Button: (({ props }) => {
+    // `emit('press')` dispatches the element's `on.press` ActionBinding through
+    // ActionProvider. For local-mode actions (e.g. setState) this is handled
+    // by the built-in ActionProvider handler — no custom entry in `handlers`
+    // is required. Repeated presses keep working because local-mode never locks
+    // the card.
+    Button: (({ props, emit }) => {
       const variant = props.variant
         ? buttonVariantMap[props.variant]
         : buttonVariantMap.primary;
       return (
-        <UiButton variant={variant} disabled={props.disabled ?? false}>
+        <UiButton
+          variant={variant}
+          disabled={props.disabled ?? false}
+          onClick={() => emit('press')}
+        >
           {props.label}
         </UiButton>
       );

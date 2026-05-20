@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
 // Schema — flat element-map format (root + elements record)
+//
+// Note: `visible`, `on`, and `state` are NOT in this schema definition because
+// the schema builder treats all s.any() fields as required. These fields are
+// documented in buildCatalogPrompt() and handled at runtime by the json-render
+// Renderer which reads them directly from UIElement (where they're already typed
+// as optional). Our catalog.validate() only validates type/props/children.
 // ---------------------------------------------------------------------------
 
 const schema = defineSchema((s) => ({
@@ -106,7 +112,7 @@ export const catalog = defineCatalog(schema, {
         disabled: z.boolean().optional(),
       }),
       description:
-        'A clickable button. Action wiring is not yet supported; omit onClick/onSubmit props.',
+        'A clickable button. Wire actions via the element-level `on.press` field (NOT inside props). Example: `"on": { "press": { "action": "setState", "params": { "statePath": "/open", "value": true } } }`.',
     },
 
     List: {
@@ -152,7 +158,7 @@ export const catalog = defineCatalog(schema, {
         name: z.string().describe('Identifier for the form; used when submitting'),
       }),
       description:
-        'A form container. Form fields are supplied via the element-level `children` array. Action wiring is not yet supported; omit onClick/onSubmit props.',
+        'A form container. Form fields are supplied via the element-level `children` array.',
     },
 
     Tabs: {
@@ -357,6 +363,80 @@ function buildCatalogPrompt(): string {
   }
 
   lines.push('');
+  lines.push('## Local actions (client-side, no model involvement)');
+  lines.push('');
+  lines.push(
+    'Actions let a Button (or other interactive element) mutate local state. The state change is purely client-side — the model never sees it.',
+  );
+  lines.push('');
+  lines.push('**Built-in actions** (always available, no custom handler required):');
+  lines.push(
+    '- `setState` — set a value in state. Params: `{ statePath: string, value: any }`. `statePath` is a JSON Pointer path like `"/open"` or `"/count"`.',
+  );
+  lines.push('');
+  lines.push('**Wiring an action to a Button press:**');
+  lines.push(
+    'Use the element-level `on` field (a sibling of `type`, `props`, `children` — NOT inside `props`):',
+  );
+  lines.push('```json');
+  lines.push(
+    '{ "type": "Button", "props": { "label": "Toggle" }, "on": { "press": { "action": "setState", "params": { "statePath": "/open", "value": true } } }, "children": [] }',
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push('**Conditional visibility:**');
+  lines.push(
+    'Use the element-level `visible` field (a sibling of `type`, `props`, `children` — NOT inside `props`) to show/hide based on state:',
+  );
+  lines.push('```json');
+  lines.push(
+    '{ "type": "Text", "props": { "text": "Details revealed!" }, "visible": { "$state": "/open" }, "children": [] }',
+  );
+  lines.push('```');
+  lines.push(
+    '`visible` accepts: `true`/`false`, `{ "$state": "/path" }` (truthy check), `{ "$state": "/path", "eq": "value" }`, `{ "$state": "/path", "not": true }` (falsy check), `{ "$and": [...] }`, `{ "$or": [...] }`.',
+  );
+  lines.push('');
+  lines.push('**Initial state:**');
+  lines.push(
+    'Add a top-level `state` field to the spec to seed values (sibling of `root` and `elements`). Use plain (no-slash) keys — the runtime converts them to JSON Pointer paths automatically:',
+  );
+  lines.push('```json');
+  lines.push('{ "root": "...", "elements": { ... }, "state": { "open": false } }');
+  lines.push('```');
+  lines.push(
+    'Note: in `on.press` params and `visible` conditions, paths are JSON Pointers (start with `/`): `statePath: "/open"`, `{ "$state": "/open" }`. But in the top-level `state` seed, keys are plain: `{ "open": false }`.',
+  );
+  lines.push('');
+  lines.push('**Full toggle example** (Button toggles a panel):');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'card',
+        state: { open: false },
+        elements: {
+          card: { type: 'Card', props: {}, children: ['toggle-btn', 'detail-text'] },
+          'toggle-btn': {
+            type: 'Button',
+            props: { label: 'Show details' },
+            on: { press: { action: 'setState', params: { statePath: '/open', value: true } } },
+            children: [],
+          },
+          'detail-text': {
+            type: 'Text',
+            props: { text: 'Here are the details.' },
+            visible: { $state: '/open' },
+            children: [],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
   lines.push('Rules:');
   lines.push('- Set `root` to the key of the top-level element.');
   lines.push(
@@ -367,7 +447,7 @@ function buildCatalogPrompt(): string {
   );
   lines.push('- Omit optional props when defaults are sufficient.');
   lines.push(
-    '- Action wiring is not yet supported; omit onClick/onSubmit props and any event handlers.',
+    '- CRITICAL: `on`, `visible`, and `state` are element-level or spec-level fields — NEVER put them inside `props`.',
   );
 
   return lines.join('\n');
