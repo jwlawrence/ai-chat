@@ -1,7 +1,7 @@
 'use client';
 
 import type { UIMessage } from 'ai';
-import { Renderer } from '@json-render/react';
+import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { Spec } from '@json-render/core';
 import { Globe, Sparkles } from 'lucide-react';
 import {
@@ -134,9 +134,11 @@ export function ChatConversation({
                         const spec = p.output as Spec;
                         return (
                           <div key={key} data-spec-id={spec?.root}>
-                            <SpecRenderer spec={spec} registry={registry}>
-                              <Renderer spec={spec} registry={registry} />
-                            </SpecRenderer>
+                            <JSONUIProvider registry={registry}>
+                              <SpecRenderer spec={spec} registry={registry}>
+                                <Renderer spec={spec} registry={registry} />
+                              </SpecRenderer>
+                            </JSONUIProvider>
                           </div>
                         );
                       }
