@@ -306,8 +306,31 @@ function buildCatalogPrompt(): string {
   const lines: string[] = [];
 
   lines.push(
-    'Available components (use these as the `type` field of each element). Each element is `{ type, props, children }` where `children` is an array of element keys.',
+    'The spec is ALWAYS a single JSON object with TWO required top-level fields: `root` (string) AND `elements` (object). Both must be present in the same tool call — do not call with only `root`.',
   );
+  lines.push('');
+  lines.push('Minimum valid spec (a card containing one heading):');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'main',
+        elements: {
+          main: { type: 'Card', props: {}, children: ['title'] },
+          title: { type: 'Heading', props: { level: 1, text: 'Hello' }, children: [] },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    'Each element is `{ type, props, children }`. `type` is one of the component names below. `props` is an object whose shape depends on the component. `children` is an array of element keys (strings); use `[]` for leaf elements.',
+  );
+  lines.push('');
+  lines.push('Available components:');
 
   for (const [name, def] of Object.entries(comps)) {
     lines.push('');

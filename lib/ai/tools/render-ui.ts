@@ -7,14 +7,20 @@ import { catalog, catalogPrompt, validateElementProps } from '@/lib/json-render/
 // ---------------------------------------------------------------------------
 
 const elementSchema = z.object({
-  type: z.string(),
-  props: z.record(z.string(), z.unknown()),
-  children: z.array(z.string()),
+  type: z.string().describe('Component name from the catalog (e.g. "Card", "Heading").'),
+  props: z.record(z.string(), z.unknown()).describe('Props object whose shape matches the component.'),
+  children: z
+    .array(z.string())
+    .describe('Array of child element keys. Use [] for leaf elements.'),
 });
 
 const specSchema = z.object({
-  root: z.string(),
-  elements: z.record(z.string(), elementSchema),
+  root: z.string().describe('REQUIRED. Key of the top-level element in `elements`.'),
+  elements: z
+    .record(z.string(), elementSchema)
+    .describe(
+      'REQUIRED. Map from element key (string) to its definition. Must include the `root` key. Pass the full elements map in the same call as `root` — never call with only `root`.',
+    ),
 });
 
 type Spec = z.infer<typeof specSchema>;
