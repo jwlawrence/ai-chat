@@ -10,12 +10,12 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-
-afterEach(cleanup);
 import { Renderer, JSONUIProvider } from '@json-render/react';
 import type { Spec } from '@json-render/core';
 
 import { registry, SpecRenderer } from '@/lib/json-render/registry';
+
+afterEach(cleanup);
 
 // ---------------------------------------------------------------------------
 // Helper: render a spec wrapped in all required providers
@@ -228,6 +228,13 @@ describe('registry — Accordion (children from props)', () => {
     renderSpec(accordionSpec);
     expect(screen.getByText('Section One')).toBeInTheDocument();
     expect(screen.getByText('Section Two')).toBeInTheDocument();
+  });
+
+  it('renders nested children of the default-open panel', () => {
+    renderSpec(accordionSpec);
+    // First item is open by default (Accordion sets defaultValue to [firstId]),
+    // so its nested children resolved via SpecContext.renderChildren are visible.
+    expect(screen.getByText('Inside section one')).toBeInTheDocument();
   });
 });
 

@@ -105,6 +105,9 @@ export function SpecRenderer({
         if (!Comp) return null;
         // Recursively build children for this element
         const nested = el.children ? renderChildren(el.children) : undefined;
+        // Stubs: action wiring (mode: 'local' | 'model' | 'endpoint') lands in
+        // later phases. When ActionProvider is introduced, replace these with
+        // real dispatch.
         return (
           <Comp
             key={key}
@@ -340,8 +343,9 @@ export const { registry } = defineRegistry(catalog, {
     // ---- Accordion ----------------------------------------------------------
     Accordion: (({ props }) => {
       const ctx = useSpecContext();
+      const firstId = props.items[0]?.id;
       return (
-        <UiAccordion>
+        <UiAccordion multiple defaultValue={firstId ? [firstId] : []}>
           {props.items.map((item) => (
             <AccordionItem key={item.id} value={item.id}>
               <AccordionTrigger>{item.label}</AccordionTrigger>
