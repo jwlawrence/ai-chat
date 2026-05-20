@@ -59,12 +59,16 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@tailwindcss/postcss": "^4.3.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.6.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.1.10",
     "@vitest/coverage-v8": "^4.1.5",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
