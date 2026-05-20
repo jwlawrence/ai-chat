@@ -55,7 +55,21 @@ export function ChatConversation({
   status: 'ready' | 'streaming' | 'submitted' | 'error';
   onSuggest?: (text: string) => void;
 }) {
-  const showThinking = status === 'submitted' && messages.at(-1)?.role !== 'assistant';
+  // Show the "Thinking..." indicator any time the turn is in flight AND the assistant
+  // hasn't produced VISIBLE content yet. Reasoning parts aren't rendered on screen, so
+  // a reasoning-first stream would otherwise hide the spinner during the long gap
+  // between reasoning-end and the first text token. We only count text/file/tool parts.
+  const last = messages.at(-1);
+  const isWaiting = status === 'submitted' || status === 'streaming';
+  const assistantHasVisibleContent =
+    last?.role === 'assistant' &&
+    (last.parts ?? []).some((p) => {
+      if (p.type === 'text') return p.text.length > 0;
+      if (p.type === 'file') return true;
+      if (p.type.startsWith('tool-')) return true;
+      return false;
+    });
+  const showThinking = isWaiting && !assistantHasVisibleContent;
   const isEmpty = messages.length === 0;
 
   return (
