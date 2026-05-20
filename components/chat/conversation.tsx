@@ -101,7 +101,8 @@ export function ChatConversation({
                     }
                     if (p.type === 'tool-webSearch') {
                       const query = (p.input as { query?: string } | undefined)?.query;
-                      const isRunning = p.state === 'input-streaming' || p.state === 'input-available';
+                      const isRunning =
+                        p.state === 'input-streaming' || p.state === 'input-available';
                       return (
                         <div
                           key={key}

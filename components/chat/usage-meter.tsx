@@ -40,7 +40,10 @@ export function UsageMeter({
 
   return (
     <div className="flex items-center gap-3 text-muted-foreground text-xs">
-      <div className="flex items-center gap-1.5" title={`${used.toLocaleString()} / ${max.toLocaleString()} input tokens`}>
+      <div
+        className="flex items-center gap-1.5"
+        title={`${used.toLocaleString()} / ${max.toLocaleString()} input tokens`}
+      >
         <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
           <div
             className={cn('h-full transition-all', warn ? 'bg-destructive' : 'bg-foreground/60')}

@@ -29,10 +29,7 @@ function SubmitButton({ disabledByText }: { disabledByText: boolean }) {
 function AttachButton() {
   const attachments = usePromptInputAttachments();
   return (
-    <PromptInputButton
-      onClick={() => attachments.openFileDialog()}
-      aria-label="Attach images"
-    >
+    <PromptInputButton onClick={() => attachments.openFileDialog()} aria-label="Attach images">
       <Paperclip className="size-4" />
     </PromptInputButton>
   );
@@ -50,11 +47,7 @@ function AttachmentChips() {
         >
           {f.mediaType?.startsWith('image/') ? (
             // biome-ignore lint/performance/noImgElement: data/blob URLs aren't supported by next/image
-            <img
-              src={f.url}
-              alt={f.filename ?? 'attachment'}
-              className="size-full object-cover"
-            />
+            <img src={f.url} alt={f.filename ?? 'attachment'} className="size-full object-cover" />
           ) : (
             <div className="flex size-full items-center justify-center text-muted-foreground text-xs">
               file

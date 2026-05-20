@@ -18,10 +18,7 @@ export type Reconciliation<T> = {
   newMessages: T[];
 };
 
-export function reconcileIncoming<T>(
-  dbCount: number,
-  incoming: readonly T[],
-): Reconciliation<T> {
+export function reconcileIncoming<T>(dbCount: number, incoming: readonly T[]): Reconciliation<T> {
   const trimCount = Math.max(0, dbCount - incoming.length);
   const newMessages = incoming.slice(dbCount - trimCount);
   return { trimCount, newMessages: [...newMessages] };
