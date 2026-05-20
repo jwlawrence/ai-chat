@@ -17,6 +17,12 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.1
         version: 1.4.1(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@json-render/core':
+        specifier: 0.19.0
+        version: 0.19.0(zod@4.4.3)
+      '@json-render/react':
+        specifier: 0.19.0
+        version: 0.19.0(react@19.2.6)(zod@4.4.3)
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.6)
@@ -967,6 +973,16 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha1-2xXWeByTHzolGj2sOVAcmKYIL9A=, tarball: https://artifactory.corp.linkedin.com:8083/artifactory/api/npm/npm-all/@jridgewell/trace-mapping/-/@jridgewell/trace-mapping-0.3.31.tgz}
+
+  '@json-render/core@0.19.0':
+    resolution: {integrity: sha512-vvcyZ+10EDZKbEyB1J2kXOGfDaiZR2LurZGSqi2r5STHyKr+Te85DWaBxTwRGgM7U1LtIvNx85BzzjElRKoAIg==, tarball: https://artifactory.corp.linkedin.com:8083/artifactory/api/npm/npm-all/@json-render/core/-/@json-render/core-0.19.0.tgz}
+    peerDependencies:
+      zod: ^4.0.0
+
+  '@json-render/react@0.19.0':
+    resolution: {integrity: sha512-kTW6b6cSNRrlEfCUf/69SLoLn+CufC968ruge9tnQlp9pDTGG/SK8pgM541FdgwMFA4zm3s5mpM3G8rdODKc/A==, tarball: https://artifactory.corp.linkedin.com:8083/artifactory/api/npm/npm-all/@json-render/react/-/@json-render/react-0.19.0.tgz}
+    peerDependencies:
+      react: ^19.2.3
 
   '@mermaid-js/parser@1.1.0':
     resolution: {integrity: sha512-gxK9ZX2+Fex5zu8LhRQoMeMPEHbc73UKZ0FQ54YrQtUxE1VVhMwzeNtKRPAu5aXks4FasbMe4xB4bWrmq6Jlxw==, tarball: https://artifactory.corp.linkedin.com:8083/artifactory/api/npm/npm-all/@mermaid-js/parser/-/@mermaid-js/parser-1.1.0.tgz}
@@ -3798,6 +3814,17 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@json-render/core@0.19.0(zod@4.4.3)':
+    dependencies:
+      zod: 4.4.3
+
+  '@json-render/react@0.19.0(react@19.2.6)(zod@4.4.3)':
+    dependencies:
+      '@json-render/core': 0.19.0(zod@4.4.3)
+      react: 19.2.6
+    transitivePeerDependencies:
+      - zod
 
   '@mermaid-js/parser@1.1.0':
     dependencies:

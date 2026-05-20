@@ -19,6 +19,8 @@
     "@ai-sdk/azure": "^3.0.64",
     "@ai-sdk/react": "^3.0.179",
     "@base-ui/react": "^1.4.1",
+    "@json-render/core": "0.19.0",
+    "@json-render/react": "0.19.0",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@rive-app/react-webgl2": "^4.28.4",
     "@streamdown/cjk": "^1.0.3",
