@@ -173,19 +173,15 @@ function RenderUICard({
     [sendMessage, spec.root],
   );
 
-  const lock = () => {
-    lockedRef.current = true;
-    setIsLocked(true);
-  };
-
-  // Preprocess the spec to inject disabled:true into model-mode Buttons when
-  // locked. Both Renderer and SpecRenderer.renderChildren consume effectiveSpec
-  // so top-level and Tabs/Accordion-nested buttons both reflect the lock.
+  // Preprocess the spec to inject disabled:true into model-mode Buttons (and
+  // Phase 5 form fields) when locked. Both Renderer and SpecRenderer.renderChildren
+  // consume effectiveSpec so top-level and Tabs/Accordion-nested elements both
+  // reflect the lock through a single source of truth.
   const effectiveSpec = useMemo(() => applyLockToSpec(spec, isLocked), [spec, isLocked]);
 
   return (
     <JSONUIProvider registry={registry} initialState={initialState} handlers={handlers}>
-      <SpecRenderer spec={effectiveSpec} registry={registry} isLocked={isLocked} lock={lock}>
+      <SpecRenderer spec={effectiveSpec} registry={registry}>
         <Renderer spec={effectiveSpec} registry={registry} />
       </SpecRenderer>
     </JSONUIProvider>

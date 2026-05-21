@@ -549,3 +549,119 @@ describe('Phase 3: applyLockToSpec + model-mode lock display', () => {
     expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix #7 + #5: broadened lock predicate — mixed local+model, no-button, form fields
+// ---------------------------------------------------------------------------
+
+describe('applyLockToSpec — broadened predicate (Fix #7 + #5)', () => {
+  it('disables only the model-mode button in a mixed local+model spec', () => {
+    // One local-mode button (setState) + one model-mode button (sendToModel).
+    // Only the model-mode button should be disabled on lock.
+    const mixedSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['local-btn', 'model-btn'] },
+        'local-btn': {
+          type: 'Button',
+          props: { label: 'Toggle' },
+          on: { press: { action: 'setState', params: { statePath: '/open', value: true } } },
+          children: [],
+        },
+        'model-btn': {
+          type: 'Button',
+          props: { label: 'Continue' },
+          on: { press: { action: 'sendToModel', params: { label: 'Continue' } } },
+          children: [],
+        },
+      },
+    };
+    const result = applyLockToSpec(mixedSpec, true);
+    // local-mode button must NOT be disabled
+    expect(
+      (result.elements['local-btn'].props as { disabled?: boolean }).disabled,
+    ).toBeUndefined();
+    // model-mode button MUST be disabled
+    expect((result.elements['model-btn'].props as { disabled?: boolean }).disabled).toBe(true);
+  });
+
+  it('renders only the model-mode button as disabled when mounted', async () => {
+    const mixedSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['local-btn', 'model-btn'] },
+        'local-btn': {
+          type: 'Button',
+          props: { label: 'Toggle' },
+          on: { press: { action: 'setState', params: { statePath: '/open', value: true } } },
+          children: [],
+        },
+        'model-btn': {
+          type: 'Button',
+          props: { label: 'Continue' },
+          on: { press: { action: 'sendToModel', params: { label: 'Continue' } } },
+          children: [],
+        },
+      },
+    };
+    renderSpec(applyLockToSpec(mixedSpec, true));
+    expect(screen.getByRole('button', { name: 'Toggle' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('does not crash and injects no disabled props when spec has no Buttons', () => {
+    // Card + Text + Heading only — applyLockToSpec(spec, true) should not crash.
+    const noBtnSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: { title: 'Info' }, children: ['heading', 'body'] },
+        heading: {
+          type: 'Heading',
+          props: { level: 2, text: 'Welcome' },
+          children: [],
+        },
+        body: {
+          type: 'Text',
+          props: { text: 'No buttons here.' },
+          children: [],
+        },
+      },
+    };
+    const result = applyLockToSpec(noBtnSpec, true);
+    // None of the elements should have a disabled prop injected
+    for (const el of Object.values(result.elements)) {
+      expect((el.props as { disabled?: boolean }).disabled).toBeUndefined();
+    }
+  });
+
+  it('disables Input and Checkbox form fields when locked (Phase 5 readiness)', () => {
+    // Form fields without explicit on.<event> bindings must also be locked
+    // so users cannot keep editing after a model-mode submit fires.
+    const formSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['name-input', 'agree-check', 'submit-btn'] },
+        'name-input': {
+          type: 'Input',
+          props: { name: 'name', label: 'Name' },
+          children: [],
+        },
+        'agree-check': {
+          type: 'Checkbox',
+          props: { name: 'agree', label: 'Agree' },
+          children: [],
+        },
+        'submit-btn': {
+          type: 'Button',
+          props: { label: 'Submit' },
+          on: { press: { action: 'sendToModel', params: { label: 'Submit' } } },
+          children: [],
+        },
+      },
+    };
+    const result = applyLockToSpec(formSpec, true);
+    expect((result.elements['name-input'].props as { disabled?: boolean }).disabled).toBe(true);
+    expect((result.elements['agree-check'].props as { disabled?: boolean }).disabled).toBe(true);
+    expect((result.elements['submit-btn'].props as { disabled?: boolean }).disabled).toBe(true);
+  });
+});

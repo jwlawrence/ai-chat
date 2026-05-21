@@ -59,38 +59,59 @@ interface SpecContextValue {
   spec: Spec;
   /** Render a list of element keys as ReactNodes */
   renderChildren: (keys: string[], visited?: Set<string>) => React.ReactNode;
-  /**
-   * Whether this card is locked for model-mode actions.
-   * When true, buttons whose `on.press` action has mode='model' render
-   * as disabled. Local-mode (setState) buttons are unaffected.
-   */
-  isLocked: boolean;
-  /** Lock this card — called by RenderUICard after a model-mode press fires. */
-  lock: () => void;
 }
 
 export const SpecContext = createContext<SpecContextValue | null>(null);
 
 /**
- * Returns a new spec where every Button whose press binding is a model-mode
- * action has `disabled: true` injected into its props. When `isLocked` is
- * false, returns the original spec unchanged (no allocation). Used by
- * RenderUICard so both json-render's upstream Renderer and SpecRenderer's
- * renderChildren see the same locked vs. unlocked spec — single source of
- * truth, no per-component lock reads.
+ * Returns true when an element has at least one event binding whose action
+ * resolves to model mode. Checks ALL `on.<event>` bindings, not just
+ * `on.press`, so future event types are covered automatically.
+ *
+ * Model-mode-bound elements become inert after a press fires: the user already
+ * issued the turn; re-pressing would duplicate it. Local-mode (setState) buttons
+ * on the same card are unaffected and keep working.
+ */
+function isModelModeBound(el: Spec['elements'][string]): boolean {
+  const onBindings = el.on as Record<string, { action?: string }> | undefined;
+  if (!onBindings) return false;
+  return Object.values(onBindings).some(
+    (b) => b.action !== undefined && resolveActionMode(b.action) === 'model',
+  );
+}
+
+/**
+ * Returns true for form-input element types that accept user input without an
+ * explicit `on.<event>` binding. When a card locks via a model-mode submit,
+ * these must also become non-interactive so the user cannot keep editing fields
+ * whose values have already been submitted and persisted.
+ *
+ * Phase 5 readiness: form-field locking is wired here alongside button locking
+ * so the applyLockToSpec contract is complete before endpoint-mode form submit
+ * is introduced.
+ */
+function isFormField(elType: string): boolean {
+  return elType === 'Input' || elType === 'Select' || elType === 'Checkbox';
+}
+
+/**
+ * Returns a new spec where:
+ *  - Every element with a model-mode event binding has `disabled: true`
+ *    injected into its props.
+ *  - Every form-field element (Input, Select, Checkbox) has `disabled: true`
+ *    injected — when the card is locked they should not accept further input
+ *    because the submitted state has already been sent to the model.
+ *
+ * When `isLocked` is false, returns the original spec unchanged (no
+ * allocation). Both json-render's upstream Renderer and SpecRenderer's
+ * renderChildren consume the returned spec, so top-level and nested elements
+ * both reflect lock state through a single source of truth.
  */
 export function applyLockToSpec(spec: Spec, isLocked: boolean): Spec {
   if (!isLocked) return spec;
   const newElements: Record<string, Spec['elements'][string]> = {};
   for (const [key, el] of Object.entries(spec.elements)) {
-    const pressAction = (
-      el.on as { press?: { action?: string } } | undefined
-    )?.press?.action;
-    if (
-      el.type === 'Button' &&
-      pressAction !== undefined &&
-      resolveActionMode(pressAction) === 'model'
-    ) {
+    if (isModelModeBound(el) || isFormField(el.type)) {
       newElements[key] = {
         ...el,
         props: { ...(el.props as Record<string, unknown>), disabled: true },
@@ -112,6 +133,11 @@ export function applyLockToSpec(spec: Spec, isLocked: boolean): Spec {
  * the rest of the spec. The built-in `setState` action is handled automatically
  * by `ActionProvider` — no custom handler is required for local-mode actions.
  *
+ * Lock display is handled by `applyLockToSpec()` in RenderUICard, which injects
+ * `disabled: true` into model-mode-bound elements (and Phase 5 form-field props)
+ * before the spec reaches Renderer. SpecContext is not consulted for lock state —
+ * the pre-processed spec is the single source of truth.
+ *
  * @example
  * ```tsx
  * <SpecRenderer spec={spec} registry={registry}>
@@ -122,16 +148,10 @@ export function applyLockToSpec(spec: Spec, isLocked: boolean): Spec {
 export function SpecRenderer({
   spec,
   registry: reg,
-  isLocked = false,
-  lock = () => {},
   children,
 }: {
   spec: Spec;
   registry: ComponentRegistry;
-  /** Whether this card is locked for model-mode actions (passed from RenderUICard). */
-  isLocked?: boolean;
-  /** Callback to lock the card when a model-mode action fires. */
-  lock?: () => void;
   children: React.ReactNode;
 }) {
   // Grab the real action executor from ActionProvider (mounted by JSONUIProvider).
@@ -215,7 +235,7 @@ export function SpecRenderer({
   );
 
   return (
-    <SpecContext.Provider value={{ spec, renderChildren, isLocked, lock }}>
+    <SpecContext.Provider value={{ spec, renderChildren }}>
       {children}
     </SpecContext.Provider>
   );
@@ -360,11 +380,9 @@ export const { registry } = defineRegistry(catalog, {
     // is required. Repeated presses keep working because local-mode never locks
     // the card.
     //
-    // Model-mode lock: when the card is locked, RenderUICard / SpecRenderer
-    // preprocess the spec via `applyLockToSpec` to inject `disabled: true` into
-    // every Button whose press binding is model-mode. By the time this
-    // ComponentFn runs, `props.disabled` is already correct — so this code path
-    // is unchanged regardless of lock state.
+    // Lock display is handled by applyLockToSpec() in RenderUICard, which injects
+    // disabled:true into model-mode Button props (and Phase 5 form-field props)
+    // before the spec reaches Renderer. SpecContext is not consulted for lock state.
     Button: (({ props, emit }) => {
       const variant = props.variant ? buttonVariantMap[props.variant] : buttonVariantMap.primary;
       return (
