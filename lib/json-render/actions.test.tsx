@@ -15,10 +15,10 @@
  * 6. SpecRenderer.renderChildren wires real emit for Tabs nested children.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
-import { Renderer, JSONUIProvider } from '@json-render/react';
 import type { Spec } from '@json-render/core';
+import { JSONUIProvider, Renderer } from '@json-render/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { registry, SpecRenderer } from '@/lib/json-render/registry';
 
@@ -257,6 +257,166 @@ describe('local-mode actions — visibility binding', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Fix #3: $cond-based toggle pattern
+// ---------------------------------------------------------------------------
+
+describe('local-mode actions — Fix #3: $cond toggle', () => {
+  it('flips visibility on each press using $cond expression value', async () => {
+    const spec: Spec = {
+      root: 'card',
+      state: { open: false },
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['toggle-btn', 'detail-text'],
+        },
+        'toggle-btn': {
+          type: 'Button',
+          props: { label: 'Toggle details' },
+          on: {
+            press: {
+              action: 'setState',
+              params: {
+                statePath: '/open',
+                value: { $cond: { $state: '/open' }, $then: false, $else: true },
+              },
+            },
+          },
+          children: [],
+        },
+        'detail-text': {
+          type: 'Text',
+          props: { text: 'Here are the details.' },
+          visible: { $state: '/open' },
+          children: [],
+        },
+      },
+    };
+
+    // Seed state with open: false (plain key, no leading slash).
+    renderSpec(spec, { open: false });
+
+    // Initially hidden (open is false).
+    expect(screen.queryByText('Here are the details.')).not.toBeInTheDocument();
+
+    // First click → open flips to true → text appears.
+    const btn = screen.getByRole('button', { name: 'Toggle details' });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(screen.getByText('Here are the details.')).toBeInTheDocument();
+
+    // Second click → open flips back to false → text hidden again.
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(screen.queryByText('Here are the details.')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #14: $and/$or composite visibility
+// ---------------------------------------------------------------------------
+
+describe('local-mode actions — Fix #14: $and/$or composite visibility', () => {
+  it('$or: shows element when at least one condition is truthy', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['or-text'],
+        },
+        'or-text': {
+          type: 'Text',
+          props: { text: 'Or-condition text' },
+          // Visible when /a OR /b is truthy; seed /b = true, /a = false
+          visible: { $or: [{ $state: '/a' }, { $state: '/b' }] },
+          children: [],
+        },
+      },
+    };
+
+    // Only /b is truthy — should be visible via $or.
+    renderSpec(spec, { a: false, b: true });
+    expect(screen.getByText('Or-condition text')).toBeInTheDocument();
+  });
+
+  it('$or: hides element when all conditions are falsy', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['or-text'],
+        },
+        'or-text': {
+          type: 'Text',
+          props: { text: 'Or-condition text' },
+          visible: { $or: [{ $state: '/a' }, { $state: '/b' }] },
+          children: [],
+        },
+      },
+    };
+
+    // Both /a and /b falsy — should be hidden.
+    renderSpec(spec, { a: false, b: false });
+    expect(screen.queryByText('Or-condition text')).not.toBeInTheDocument();
+  });
+
+  it('$and: hides element when any condition is falsy', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['and-text'],
+        },
+        'and-text': {
+          type: 'Text',
+          props: { text: 'And-condition text' },
+          // Visible only when BOTH /a AND /b are truthy
+          visible: { $and: [{ $state: '/a' }, { $state: '/b' }] },
+          children: [],
+        },
+      },
+    };
+
+    // /a is true but /b is false — $and should be false → hidden.
+    renderSpec(spec, { a: true, b: false });
+    expect(screen.queryByText('And-condition text')).not.toBeInTheDocument();
+  });
+
+  it('$and: shows element when all conditions are truthy', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['and-text'],
+        },
+        'and-text': {
+          type: 'Text',
+          props: { text: 'And-condition text' },
+          visible: { $and: [{ $state: '/a' }, { $state: '/b' }] },
+          children: [],
+        },
+      },
+    };
+
+    // Both /a and /b truthy — $and should be true → visible.
+    renderSpec(spec, { a: true, b: true });
+    expect(screen.getByText('And-condition text')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 5. Repeated presses — toggle button keeps toggling (no lock state)
 // ---------------------------------------------------------------------------
 
@@ -297,15 +457,21 @@ describe('local-mode actions — repeated presses', () => {
     expect(screen.queryByText('Toggle panel')).not.toBeInTheDocument();
 
     // Press Show → visible
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    });
     expect(screen.getByText('Toggle panel')).toBeInTheDocument();
 
     // Press Hide → hidden again
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Hide' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
+    });
     expect(screen.queryByText('Toggle panel')).not.toBeInTheDocument();
 
     // Press Show again → visible again (no lock state)
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show' })); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show' }));
+    });
     expect(screen.getByText('Toggle panel')).toBeInTheDocument();
   });
 });
