@@ -297,6 +297,50 @@ describe('renderUI tool — Fix #15: cap failures at 10', () => {
 // mirroring the exact predicate used in the route.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Phase 3: unknown action name in on.<event> bindings
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Phase 3: unknown action names', () => {
+  it('throws naming the bad action when on.press references an unregistered name', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Hi' },
+          on: { press: { action: 'doesntExist', params: {} } },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "btn"/);
+    expect(msg).toMatch(/unknown action "doesntExist"/);
+    expect(msg).toMatch(/setState/); // mentions known actions
+    expect(msg).toMatch(/sendToModel/);
+  });
+
+  it('accepts sendToModel with required label param', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Continue' },
+          on: { press: { action: 'sendToModel', params: { label: 'Continue' } } },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+});
+
 describe('prepareStep already-rendered detection (logic unit test)', () => {
   // Mirrors the predicate in app/api/chat/route.ts prepareStep callback.
   function alreadyRendered(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): boolean {

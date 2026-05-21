@@ -47,7 +47,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { TabsContent, TabsList, TabsTrigger, Tabs as UiTabs } from '@/components/ui/tabs';
-import { catalog } from '@/lib/json-render/catalog';
+import { catalog, resolveActionMode } from '@/lib/json-render/catalog';
 
 // ---------------------------------------------------------------------------
 // SpecContext — gives Tabs / Accordion access to the flat spec for rendering
@@ -59,6 +59,14 @@ interface SpecContextValue {
   spec: Spec;
   /** Render a list of element keys as ReactNodes */
   renderChildren: (keys: string[], visited?: Set<string>) => React.ReactNode;
+  /**
+   * Whether this card is locked for model-mode actions.
+   * When true, buttons whose `on.press` action has mode='model' render
+   * as disabled. Local-mode (setState) buttons are unaffected.
+   */
+  isLocked: boolean;
+  /** Lock this card — called by RenderUICard after a model-mode press fires. */
+  lock: () => void;
 }
 
 export const SpecContext = createContext<SpecContextValue | null>(null);
@@ -83,10 +91,16 @@ export const SpecContext = createContext<SpecContextValue | null>(null);
 export function SpecRenderer({
   spec,
   registry: reg,
+  isLocked = false,
+  lock = () => {},
   children,
 }: {
   spec: Spec;
   registry: ComponentRegistry;
+  /** Whether this card is locked for model-mode actions (passed from RenderUICard). */
+  isLocked?: boolean;
+  /** Callback to lock the card when a model-mode action fires. */
+  lock?: () => void;
   children: React.ReactNode;
 }) {
   // Grab the real action executor from ActionProvider (mounted by JSONUIProvider).
@@ -124,6 +138,18 @@ export function SpecRenderer({
           | Record<string, { action: string; params?: Record<string, unknown> }>
           | undefined;
 
+        // Model-mode lock: if the card is locked AND this element is a Button
+        // with a model-mode press binding, inject `disabled: true` into its props
+        // so the Button component renders in a greyed-out state without needing
+        // any special logic inside the ComponentFn. Local-mode buttons are
+        // unaffected because resolveActionMode('setState') === 'local'.
+        const pressAction = onBindings?.press?.action;
+        const effectiveEl =
+          isLocked && el.type === 'Button' && pressAction !== undefined &&
+          resolveActionMode(pressAction) === 'model'
+            ? { ...el, props: { ...(el.props as Record<string, unknown>), disabled: true } }
+            : el;
+
         // Fix #12: Derive emit from on so there is a single dispatch path.
         const on = (eventName: string): EventHandle => {
           const binding = onBindings?.[eventName];
@@ -144,16 +170,16 @@ export function SpecRenderer({
         // it in VisibleChild so useIsVisible is called inside a proper React
         // component (hooks-rules compliant).
         const node = (
-          <Comp key={key} element={el} emit={emit} on={on} loading={false}>
+          <Comp key={key} element={effectiveEl} emit={emit} on={on} loading={false}>
             {nested}
           </Comp>
         );
 
-        if (el.visible !== undefined) {
+        if (effectiveEl.visible !== undefined) {
           return (
             <VisibleChild
               key={key}
-              condition={el.visible as VisibilityCondition | undefined}
+              condition={effectiveEl.visible as VisibilityCondition | undefined}
               node={node}
             />
           );
@@ -162,10 +188,14 @@ export function SpecRenderer({
         return node;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [spec, reg, execute],
+    [spec, reg, execute, isLocked],
   );
 
-  return <SpecContext.Provider value={{ spec, renderChildren }}>{children}</SpecContext.Provider>;
+  return (
+    <SpecContext.Provider value={{ spec, renderChildren, isLocked, lock }}>
+      {children}
+    </SpecContext.Provider>
+  );
 }
 
 /**
@@ -306,6 +336,11 @@ export const { registry } = defineRegistry(catalog, {
     // by the built-in ActionProvider handler — no custom entry in `handlers`
     // is required. Repeated presses keep working because local-mode never locks
     // the card.
+    //
+    // Model-mode lock: SpecRenderer.renderChildren injects `disabled: true` into
+    // the props of any Button whose press action is model-mode when the card is
+    // locked. This happens before the ComponentFn is called, so the Button just
+    // reads `props.disabled` as usual — no special lock logic needed here.
     Button: (({ props, emit }) => {
       const variant = props.variant ? buttonVariantMap[props.variant] : buttonVariantMap.primary;
       return (

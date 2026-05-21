@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { catalog, catalogPrompt, validateElementProps } from './catalog';
+import {
+  ACTION_REGISTRY,
+  catalog,
+  catalogPrompt,
+  resolveActionMode,
+  validateElementProps,
+} from './catalog';
 
 // ---------------------------------------------------------------------------
 // Fixture: a nested layout combining Card, Heading, Text, Button, Callout
@@ -252,12 +258,46 @@ describe('catalogPrompt', () => {
     }
   });
 
-  it('catalogPrompt fits within ~10 KB', () => {
+  it('catalogPrompt fits within ~13 KB', () => {
     // catalogPrompt is appended to the renderUI tool description on every chat
     // turn. Phase 1 produced ~3.6 KB; Phase 2 added local-action docs (on.press,
-    // visible, state, a worked example) which grew it to ~6.5 KB. The bound is
-    // set to ~1.5x the current size to catch accidental regressions without
-    // flaking on minor wording tweaks. Still well below the old ~12 KB baseline.
-    expect(catalogPrompt.length).toBeLessThan(10_000);
+    // visible, state, worked toggle examples) which grew it to ~8 KB; Phase 3
+    // added a model-mode actions section (sendToModel + Approve/Reject example)
+    // which grew it to ~10 KB. The bound is set to ~1.3x the current size to
+    // catch accidental regressions without flaking on minor wording tweaks.
+    expect(catalogPrompt.length).toBeLessThan(13_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3: action registry + resolveActionMode
+// ---------------------------------------------------------------------------
+
+describe('ACTION_REGISTRY + resolveActionMode', () => {
+  it('exposes setState as a local-mode built-in', () => {
+    expect(ACTION_REGISTRY.has('setState')).toBe(true);
+    expect(resolveActionMode('setState')).toBe('local');
+  });
+
+  it('exposes sendToModel as a model-mode action', () => {
+    expect(ACTION_REGISTRY.has('sendToModel')).toBe(true);
+    expect(resolveActionMode('sendToModel')).toBe('model');
+  });
+
+  it('returns undefined for unknown action names', () => {
+    expect(resolveActionMode('doesntExist')).toBeUndefined();
+  });
+
+  it('every registered action declares a Zod params schema', () => {
+    for (const [name, def] of ACTION_REGISTRY) {
+      expect(def.params, `action "${name}" missing params schema`).toBeDefined();
+      // params must be a Zod schema — confirm via safeParse on an empty object
+      expect(typeof def.params.safeParse).toBe('function');
+    }
+  });
+
+  it('catalogPrompt mentions sendToModel and its required label param', () => {
+    expect(catalogPrompt).toMatch(/sendToModel/);
+    expect(catalogPrompt).toMatch(/label/);
   });
 });

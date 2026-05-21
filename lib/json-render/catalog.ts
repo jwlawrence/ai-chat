@@ -220,6 +220,84 @@ export const catalog = defineCatalog(schema, {
 });
 
 // ---------------------------------------------------------------------------
+// Actions registry — module-scoped lookup for action metadata.
+//
+// Design note: We use a plain Map rather than json-render's native `actions`
+// block in the schema because:
+//   1. The current schema definition only declares `components`; extending it
+//      would require touching the schema builder and risking runtime coupling.
+//   2. The Map gives a single source of truth for resolveActionMode() used by
+//      both the registry's button-disable logic and the server-side validator.
+// Phase 4 (endpoint mode) can extend this same registry.
+// ---------------------------------------------------------------------------
+
+export type ActionMode = 'local' | 'model' | 'endpoint';
+
+interface ActionDef {
+  mode: ActionMode;
+  description: string;
+  params: z.ZodTypeAny;
+}
+
+/**
+ * Central registry of all catalog actions (built-in + custom).
+ * Built-in `setState` is local-mode and is always available at runtime
+ * via ActionProvider — no custom handler is required for it.
+ */
+export const ACTION_REGISTRY = new Map<string, ActionDef>([
+  [
+    'setState',
+    {
+      mode: 'local',
+      description:
+        'Set a value in client-side state. Handled automatically by ActionProvider — no model involvement.',
+      params: z.object({
+        statePath: z.string().describe('JSON Pointer path, e.g. "/open"'),
+        value: z.unknown().describe('New value to assign'),
+      }),
+    },
+  ],
+  [
+    'sendToModel',
+    {
+      mode: 'model',
+      description:
+        'Synthesize a user turn that tells the model the user pressed this button. The model sees the label + optional message/data and responds normally.',
+      params: z.object({
+        label: z
+          .string()
+          .describe('Short user-facing label shown in the transcript chip (e.g. "Continue", "Approve").'),
+        message: z
+          .string()
+          .optional()
+          .describe('Optional extra context the model should see, in addition to the label.'),
+        data: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe('Optional structured payload echoed back to the model.'),
+      }),
+    },
+  ],
+]);
+
+/**
+ * Resolve the dispatch mode for a named action.
+ *
+ * - `'local'`    — handled client-side; model never sees it.
+ * - `'model'`    — synthesizes a user turn and sends to the model.
+ * - `'endpoint'` — calls a server endpoint (Phase 4, not yet wired).
+ * - `undefined`  — action name is not registered; callers decide how to handle.
+ *
+ * This is the single source of truth consulted by:
+ *   - The Button registry component (to decide whether to disable on lock).
+ *   - The server-side render-ui validator (to reject unknown action names).
+ *   - The RenderUICard action router (to dispatch to the correct handler).
+ */
+export function resolveActionMode(actionName: string): ActionMode | undefined {
+  return ACTION_REGISTRY.get(actionName)?.mode;
+}
+
+// ---------------------------------------------------------------------------
 // Per-component prop validation helper
 // ---------------------------------------------------------------------------
 
@@ -371,6 +449,60 @@ function buildCatalogPrompt(): string {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Model-mode actions section
+  // -------------------------------------------------------------------------
+  lines.push('');
+  lines.push('## Model-mode actions (button press → new user turn → model responds)');
+  lines.push('');
+  lines.push(
+    'Model-mode actions send the user\'s press back to the model as a synthetic user turn. The model receives a text message and responds normally — it may call `renderUI` again or reply with text. Once a model-mode button is pressed, ALL model-mode buttons on that card are disabled (greyed out); local-mode buttons on the same card keep working.',
+  );
+  lines.push('');
+  lines.push('**Available model-mode action:**');
+  lines.push('');
+  lines.push('- `sendToModel` — synthesize a user turn. Params:');
+  lines.push(
+    '  - `label` (string, required) — Short label shown in the transcript chip. Keep it ≤30 chars (e.g. "Continue", "Approve", "Show more").',
+  );
+  lines.push(
+    '  - `message` (string, optional) — Extra context injected into the model message in addition to the label.',
+  );
+  lines.push(
+    '  - `data` (object, optional) — Structured payload echoed to the model as JSON.',
+  );
+  lines.push('');
+  lines.push('**Example — a card with an Approve / Reject model-mode button pair:**');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'review-card',
+        elements: {
+          'review-card': { type: 'Card', props: { title: 'Review required' }, children: ['approve-btn', 'reject-btn'] },
+          'approve-btn': {
+            type: 'Button',
+            props: { label: 'Approve', variant: 'primary' },
+            on: { press: { action: 'sendToModel', params: { label: 'Approve', message: 'User approved the request.' } } },
+            children: [],
+          },
+          'reject-btn': {
+            type: 'Button',
+            props: { label: 'Reject', variant: 'destructive' },
+            on: { press: { action: 'sendToModel', params: { label: 'Reject', message: 'User rejected the request.' } } },
+            children: [],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    'Use model-mode actions when the user\'s choice should change the conversation — e.g. multi-step flows, approvals, navigation choices. Use local-mode `setState` when state changes should stay on the card.',
+  );
   lines.push('');
   lines.push('## Local actions (client-side, no model involvement)');
   lines.push('');

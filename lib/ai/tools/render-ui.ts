@@ -1,6 +1,12 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { catalog, catalogPrompt, validateElementProps } from '@/lib/json-render/catalog';
+import {
+  ACTION_REGISTRY,
+  catalog,
+  catalogPrompt,
+  resolveActionMode,
+  validateElementProps,
+} from '@/lib/json-render/catalog';
 
 // ---------------------------------------------------------------------------
 // Input schema — envelope only; catalog prop schemas run in execute()
@@ -210,9 +216,19 @@ export const renderUI = tool({
       }
 
       // Fix #18: setState bindings must have params.statePath starting with "/"
+      // Phase 3: also reject unknown action names so the model gets early feedback
+      // instead of a silent no-op at runtime.
       if (el.on) {
         const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown> }>;
         for (const [eventName, binding] of Object.entries(onBindings)) {
+          const mode = resolveActionMode(binding.action);
+          if (mode === undefined) {
+            const known = [...ACTION_REGISTRY.keys()].join(', ');
+            failures.push(
+              `element "${key}": on.${eventName} references unknown action "${binding.action}" — must be one of ${known}`,
+            );
+            continue;
+          }
           if (binding.action === 'setState') {
             const statePath = binding.params?.statePath;
             if (typeof statePath !== 'string' || !statePath.startsWith('/')) {
