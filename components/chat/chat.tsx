@@ -85,6 +85,7 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
         messages={messages}
         status={status}
         onSuggest={(text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })}
+        sendMessage={sendMessage}
       />
       {showError ? (
         <div className="mx-auto w-full max-w-3xl px-4 pb-2">
