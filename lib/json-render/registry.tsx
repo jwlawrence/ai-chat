@@ -14,30 +14,28 @@
  * render their nested elements.
  */
 
-import React, { createContext, useContext } from 'react';
+import type { Spec, VisibilityCondition } from '@json-render/core';
+import type { ComponentFn, ComponentRegistry, EventHandle } from '@json-render/react';
+import { defineRegistry, useActions, useIsVisible } from '@json-render/react';
+import { AlertCircleIcon, AlertTriangleIcon, CheckCircle2Icon, InfoIcon } from 'lucide-react';
 import NextImage from 'next/image';
-import { defineRegistry, useActions } from '@json-render/react';
-import type { ComponentFn } from '@json-render/react';
-import type { Spec } from '@json-render/core';
-import type { ComponentRegistry, EventHandle } from '@json-render/react';
-
+import React, { createContext, useContext } from 'react';
 import {
-  InfoIcon,
-  CheckCircle2Icon,
-  AlertTriangleIcon,
-  AlertCircleIcon,
-} from 'lucide-react';
-
-import { catalog } from '@/lib/json-render/catalog';
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Accordion as UiAccordion,
+} from '@/components/ui/accordion';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge as UiBadge } from '@/components/ui/badge';
+import { Button as UiButton } from '@/components/ui/button';
 import {
-  Card as UiCard,
-  CardHeader,
-  CardTitle,
   CardContent,
   CardFooter,
+  CardHeader,
+  CardTitle,
+  Card as UiCard,
 } from '@/components/ui/card';
-import { Button as UiButton } from '@/components/ui/button';
-import { Badge as UiBadge } from '@/components/ui/badge';
 import { Input as UiInput } from '@/components/ui/input';
 import {
   Select,
@@ -46,21 +44,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import {
-  Accordion as UiAccordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
-import {
-  Tabs as UiTabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { TabsContent, TabsList, TabsTrigger, Tabs as UiTabs } from '@/components/ui/tabs';
+import { catalog } from '@/lib/json-render/catalog';
 
 // ---------------------------------------------------------------------------
 // SpecContext — gives Tabs / Accordion access to the flat spec for rendering
@@ -71,7 +58,7 @@ interface SpecContextValue {
   /** The full flat spec being rendered */
   spec: Spec;
   /** Render a list of element keys as ReactNodes */
-  renderChildren: (keys: string[]) => React.ReactNode;
+  renderChildren: (keys: string[], visited?: Set<string>) => React.ReactNode;
 }
 
 export const SpecContext = createContext<SpecContextValue | null>(null);
@@ -108,54 +95,99 @@ export function SpecRenderer({
   const { execute } = useActions();
 
   const renderChildren = React.useCallback(
-    (keys: string[]) =>
+    (keys: string[], visited: Set<string> = new Set()) =>
       keys.map((key) => {
+        // Fix #8: Cycle guard — if a key has already been visited in this render
+        // path, we have a circular reference. Return null and warn once to prevent
+        // an infinite render loop.
+        if (visited.has(key)) {
+          console.warn(
+            `[json-render] Cycle detected: element "${key}" appears more than once in the render path. Skipping to prevent infinite loop.`,
+          );
+          return null;
+        }
+
         const el = spec.elements[key];
         if (!el) return null;
         const Comp = reg[el.type];
         if (!Comp) return null;
-        // Recursively build children for this element
-        const nested = el.children ? renderChildren(el.children) : undefined;
 
-        // Build real emit/on functions that forward through ActionProvider.
-        // resolveActionParam is not called here (no repeat scope), so params
-        // are passed as-is — ActionProvider resolves them before dispatch.
-        const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown> }> | undefined;
+        // Mark this key as visited before recursing into children.
+        const nextVisited = new Set(visited);
+        nextVisited.add(key);
 
-        const emit = (eventName: string): void => {
-          const binding = onBindings?.[eventName];
-          if (!binding) return;
-          // Fire and forget; errors surface to the console via ActionProvider.
-          void execute(binding);
-        };
+        // Recursively build children for this element, passing the visited set.
+        const nested = el.children ? renderChildren(el.children, nextVisited) : undefined;
 
+        // Build on/emit functions that forward through ActionProvider.
+        const onBindings = el.on as
+          | Record<string, { action: string; params?: Record<string, unknown> }>
+          | undefined;
+
+        // Fix #12: Derive emit from on so there is a single dispatch path.
         const on = (eventName: string): EventHandle => {
           const binding = onBindings?.[eventName];
           if (!binding) return { emit: () => {}, shouldPreventDefault: false, bound: false };
           return {
-            emit: () => { void execute(binding); },
+            emit: () => {
+              void execute(binding);
+            },
             shouldPreventDefault: false,
             bound: true,
           };
         };
 
-        return (
-          <Comp
-            key={key}
-            element={el}
-            emit={emit}
-            on={on}
-            loading={false}
-          >
+        const emit = (eventName: string): void => on(eventName).emit();
+
+        // Build the rendered node first, then optionally gate it behind a
+        // visibility check (Fix #9). We build the node unconditionally and wrap
+        // it in VisibleChild so useIsVisible is called inside a proper React
+        // component (hooks-rules compliant).
+        const node = (
+          <Comp key={key} element={el} emit={emit} on={on} loading={false}>
             {nested}
           </Comp>
         );
+
+        if (el.visible !== undefined) {
+          return (
+            <VisibleChild
+              key={key}
+              condition={el.visible as VisibilityCondition | undefined}
+              node={node}
+            />
+          );
+        }
+
+        return node;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [spec, reg, execute],
   );
 
   return <SpecContext.Provider value={{ spec, renderChildren }}>{children}</SpecContext.Provider>;
+}
+
+/**
+ * Tiny wrapper that evaluates a visibility condition inside a React component
+ * so `useIsVisible` can be called at the top level (hooks rules compliant).
+ * Used by renderChildren (Fix #9) to honour `visible` on Tabs/Accordion nested
+ * children that are rendered outside the main `<Renderer>` tree.
+ *
+ * We pass the already-composed child JSX as `node` to avoid needing to call
+ * Comp (which is difficult to type generically). The visibility gate simply
+ * renders or suppresses that pre-built node.
+ */
+function VisibleChild({
+  condition,
+  node,
+}: {
+  condition: VisibilityCondition | undefined;
+  node: React.ReactNode;
+}) {
+  const visible = useIsVisible(condition);
+  if (!visible) return null;
+  return <>{node}</>;
 }
 
 function useSpecContext() {
@@ -275,9 +307,7 @@ export const { registry } = defineRegistry(catalog, {
     // is required. Repeated presses keep working because local-mode never locks
     // the card.
     Button: (({ props, emit }) => {
-      const variant = props.variant
-        ? buttonVariantMap[props.variant]
-        : buttonVariantMap.primary;
+      const variant = props.variant ? buttonVariantMap[props.variant] : buttonVariantMap.primary;
       return (
         <UiButton
           variant={variant}
@@ -323,9 +353,7 @@ export const { registry } = defineRegistry(catalog, {
     // ---- Select -------------------------------------------------------------
     Select: (({ props }) => (
       <div className="space-y-1">
-        {props.label && (
-          <span className="text-sm font-medium">{props.label}</span>
-        )}
+        {props.label && <span className="text-sm font-medium">{props.label}</span>}
         <Select name={props.name}>
           <SelectTrigger className="w-full" aria-label={props.label}>
             <SelectValue placeholder="Select…" />
@@ -389,9 +417,7 @@ export const { registry } = defineRegistry(catalog, {
           {props.items.map((item) => (
             <AccordionItem key={item.id} value={item.id}>
               <AccordionTrigger>{item.label}</AccordionTrigger>
-              <AccordionContent>
-                {ctx ? ctx.renderChildren(item.children) : null}
-              </AccordionContent>
+              <AccordionContent>{ctx ? ctx.renderChildren(item.children) : null}</AccordionContent>
             </AccordionItem>
           ))}
         </UiAccordion>

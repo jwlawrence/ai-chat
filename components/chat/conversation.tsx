@@ -1,8 +1,8 @@
 'use client';
 
-import type { UIMessage } from 'ai';
-import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { Spec } from '@json-render/core';
+import { JSONUIProvider, Renderer } from '@json-render/react';
+import type { UIMessage } from 'ai';
 import { Globe, Sparkles } from 'lucide-react';
 import {
   Conversation,
@@ -11,13 +11,35 @@ import {
 } from '@/components/ai-elements/conversation';
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
-import { SpecRenderer, registry } from '@/lib/json-render/registry';
+import { specSchema } from '@/lib/ai/tools/render-ui';
+import { registry, SpecRenderer } from '@/lib/json-render/registry';
 
-/** Returns true when a message has at least one successfully-rendered renderUI part. */
-function messageHasRenderUI(m: UIMessage): boolean {
-  return (m.parts ?? []).some(
-    (p) => p.type === 'tool-renderUI' && p.state === 'output-available',
-  );
+/**
+ * Returns true when a message has at least one tool-renderUI part in any state.
+ * Previously required `state === 'output-available'`, but that caused a flicker
+ * where a rendering message would briefly show its text parts while streaming.
+ * Widening to any renderUI part state suppresses the text bubble for the full
+ * duration of the tool call (Fix #2).
+ */
+export function messageHasRenderUI(m: UIMessage): boolean {
+  return (m.parts ?? []).some((p) => p.type === 'tool-renderUI');
+}
+
+/**
+ * Strip leading slashes from state keys. Defensively normalises any persisted
+ * specs that used JSON Pointer paths ("/open") as plain state keys before the
+ * server-side Fix #11 landed. The runtime flattenToPointers call expects plain
+ * keys and adds the "/" itself, so a double-slash would silently break state.
+ */
+function stripSlashKeys(
+  s: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!s) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(s)) {
+    out[k.startsWith('/') ? k.slice(1) : k] = v;
+  }
+  return out;
 }
 
 const SUGGESTIONS = [
@@ -131,13 +153,27 @@ export function ChatConversation({
                         );
                       }
                       if (p.type === 'tool-renderUI' && p.state === 'output-available') {
-                        const spec = p.output as Spec;
+                        // Fix #7: Runtime safeParse against specSchema before casting to Spec.
+                        // An invalid/corrupt output (e.g. from an older model version) renders
+                        // an inline error callout instead of crashing the message bubble.
+                        const parsed = specSchema.safeParse(p.output);
+                        if (!parsed.success) {
+                          return (
+                            <div key={key} className="text-sm text-destructive">
+                              Failed to render UI: invalid spec.
+                            </div>
+                          );
+                        }
+                        const spec: Spec = parsed.data as Spec;
                         // Pass the spec's optional `state` field as initialState so
                         // that local-mode actions (e.g. setState) have the correct
                         // starting values. JSONUIProvider's ActionProvider handles the
                         // built-in `setState` action automatically — no custom handlers
                         // map is needed for local-mode presses.
-                        const initialState = spec?.state ?? undefined;
+                        //
+                        // Fix #11 (part 2): stripSlashKeys normalises any persisted
+                        // specs from before the server-side slash-rejection landed.
+                        const initialState = stripSlashKeys(spec?.state ?? undefined);
                         return (
                           <div key={key} data-spec-id={spec?.root}>
                             <JSONUIProvider registry={registry} initialState={initialState}>

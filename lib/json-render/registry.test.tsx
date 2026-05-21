@@ -8,10 +8,10 @@
  * Tabs / Accordion can find their nested children via SpecContext.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import { Renderer, JSONUIProvider } from '@json-render/react';
 import type { Spec } from '@json-render/core';
+import { JSONUIProvider, Renderer } from '@json-render/react';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { registry, SpecRenderer } from '@/lib/json-render/registry';
 
@@ -262,6 +262,119 @@ describe('registry — form primitives', () => {
   it('renders Form submit button', () => {
     renderSpec(formSpec);
     expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #8: Cycle guard in renderChildren
+// ---------------------------------------------------------------------------
+
+describe('registry — Fix #8: circular spec does not crash via renderChildren', () => {
+  it('does not throw and renders empty when a Tabs child creates a cycle via renderChildren', () => {
+    // Tabs uses renderChildren for its nested children, so cycles through
+    // renderChildren are our responsibility to guard. We set up:
+    //   tabs-root (Tabs) → tab child-a → child-a (Card) → ['child-a'] (self-ref)
+    // SpecRenderer.renderChildren('child-a') will recurse back into 'child-a' and
+    // the visited-set guard should break the loop and return null.
+    const spec: Spec = {
+      root: 'tabs-root',
+      elements: {
+        'tabs-root': {
+          type: 'Tabs',
+          props: {
+            tabs: [{ id: 'tab-1', label: 'Tab', children: ['child-a'] }],
+          },
+          children: [],
+        },
+        'child-a': {
+          type: 'Card',
+          props: {},
+          children: ['child-a'], // self-reference cycle
+        },
+      },
+    };
+
+    expect(() => renderSpec(spec)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #9: Visibility check in renderChildren (Tabs nested child)
+// ---------------------------------------------------------------------------
+
+describe('registry — Fix #9: visibility check in Tabs nested children', () => {
+  it('hides a Tabs child element whose visible condition is false', () => {
+    const spec: Spec = {
+      root: 'tabs-root',
+      elements: {
+        'tabs-root': {
+          type: 'Tabs',
+          props: {
+            tabs: [{ id: 'tab-a', label: 'Tab A', children: ['hidden-text'] }],
+          },
+          children: [],
+        },
+        'hidden-text': {
+          type: 'Text',
+          props: { text: 'Should be hidden' },
+          // visible: false as a static boolean — always hidden
+          visible: false,
+          children: [],
+        },
+      },
+    };
+
+    renderSpec(spec);
+    expect(screen.queryByText('Should be hidden')).not.toBeInTheDocument();
+  });
+
+  it('shows a Tabs child element whose visible condition is true', () => {
+    const spec: Spec = {
+      root: 'tabs-root',
+      elements: {
+        'tabs-root': {
+          type: 'Tabs',
+          props: {
+            tabs: [{ id: 'tab-a', label: 'Tab A', children: ['shown-text'] }],
+          },
+          children: [],
+        },
+        'shown-text': {
+          type: 'Text',
+          props: { text: 'Should be visible' },
+          visible: true,
+          children: [],
+        },
+      },
+    };
+
+    renderSpec(spec);
+    expect(screen.getByText('Should be visible')).toBeInTheDocument();
+  });
+
+  it('hides a Tabs child element when $state condition is falsy', () => {
+    const spec: Spec = {
+      root: 'tabs-root',
+      elements: {
+        'tabs-root': {
+          type: 'Tabs',
+          props: {
+            tabs: [{ id: 'tab-a', label: 'Tab A', children: ['cond-text'] }],
+          },
+          children: [],
+        },
+        'cond-text': {
+          type: 'Text',
+          props: { text: 'State-conditional text' },
+          visible: { $state: '/open' },
+          children: [],
+        },
+      },
+    };
+
+    // No initialState — /open is undefined → falsy → element hidden.
+    renderSpec(spec);
+    expect(screen.queryByText('State-conditional text')).not.toBeInTheDocument();
   });
 });
 
