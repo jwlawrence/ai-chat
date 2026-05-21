@@ -99,6 +99,133 @@ describe('renderUI tool', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fix #5: Dangling children cross-reference pass
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #5: dangling children', () => {
+  it('throws naming element key and missing child key when children references an absent key', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['missing-key'],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "card"/);
+    expect(msg).toMatch(/"missing-key"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #6: Unknown visibility operators
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #6: unknown visible operators', () => {
+  it('throws naming the bad operator when visible contains an unrecognised key', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['txt'] },
+        txt: {
+          type: 'Text',
+          props: { text: 'hi' },
+          children: [],
+          visible: { if: '/open' }, // "if" is not a recognised operator
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "txt"/);
+    expect(msg).toMatch(/unknown operator/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #11: state-key slash validation
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #11: state key leading slash', () => {
+  it('throws naming the slashed key when spec.state has a "/" prefix', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: [] },
+      },
+      state: { '/open': false },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/\/open/);
+    expect(msg).toMatch(/must not start with "\/"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #18: setState statePath validation
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #18: setState requires statePath starting with "/"', () => {
+  it('throws naming the binding when params use wrong key name', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Toggle' },
+          children: [],
+          on: {
+            press: {
+              action: 'setState',
+              params: { path: '/open' }, // wrong param name — should be statePath
+            },
+          },
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "btn"/);
+    expect(msg).toMatch(/setState/);
+    expect(msg).toMatch(/statePath/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix #15: Cap error list at 10 bullets + "...and N more."
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #15: cap failures at 10', () => {
+  it('shows exactly 10 bullet lines plus "...and 2 more." for 12 failures', async () => {
+    // Build 12 elements all with an unknown component type so each contributes one failure.
+    const elements: Record<string, { type: string; props: Record<string, never>; children: never[] }> = {};
+    for (let i = 1; i <= 12; i++) {
+      elements[`el-${i}`] = { type: 'UnknownWidget', props: {}, children: [] };
+    }
+    const bad = { root: 'el-1', elements };
+
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+
+    // Count bullet lines (lines starting with "- ")
+    const bulletCount = (msg.match(/^- /gm) ?? []).length;
+    expect(bulletCount).toBe(10);
+    expect(msg).toContain('...and 2 more.');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // prepareStep behaviour
 //
 // prepareStep is an inline callback in route.ts and cannot be imported without
