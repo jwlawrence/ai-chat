@@ -129,6 +129,9 @@ Wire `Input`, `Select`, `Checkbox`, and `Form` (already present in the Phase 1 c
 
 **User stories**: the feature is robust, observable, and reliably steered.
 
+> Phase 3 precheck round completed; the remaining items below are deferred
+> Suggestion-level work that was reviewed but not fixed in the Phase 3 batch.
+
 ### What to build
 
 Tests, system prompt tightening, and edge-case handling. No new user-visible features.
@@ -144,6 +147,16 @@ Tests, system prompt tightening, and edge-case handling. No new user-visible fea
 - [ ] Manual verification of the streaming UX: long `renderUI` input streams keep the "Thinking…" spinner up; card materializes only on `output-available`.
 - [ ] Manual verification of the recovery loop: a deliberately broken catalog-prop value produces a tool error and the model self-corrects within `stepCountIs(5)`.
 - [ ] One-line measurement of `catalogPrompt` token cost added per request; logged in dev for awareness. (Custom prompt currently ~3.6 KB / ~900 tokens; was ~12.4 KB / ~3000 tokens when generated via `catalog.prompt()`.)
+
+### Phase 3 precheck — deferred Suggestion-level items
+
+Items reviewed but intentionally deferred from the Phase 3 precheck batch:
+
+- [ ] `sendToModel` modelText composition — replace the multi-line `let` + `+=` with `[...].filter(Boolean).join('')` (simplifier nit; deferred from Fix #13 batch).
+- [ ] `SendMessage` type alias placement — currently lives mid-imports in `conversation.tsx`; move to top-of-file or a dedicated types file (simplifier nit).
+- [ ] Model could theoretically pre-lock a future card by reusing a prior chip's `sourceRootId` — low risk in a single-user app; harden before any multi-user deployment.
+- [ ] `convertToModelMessages` future-proofing — if a `convertDataPart` option is ever added to the route, ensure `data-press` chips are explicitly excluded so they don't double-appear in the model context as both text and data parts.
+- [ ] `summariseZodError` in `render-ui.ts` silently truncates at 3 issues with no trailing indicator — either remove the cap or match the `...and N more.` pattern used by `formatErrors`.
 
 ### Phase 1 follow-ups (deferred polish from the initial vertical slice)
 
