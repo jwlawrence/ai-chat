@@ -229,6 +229,21 @@ export const renderUI = tool({
             );
             continue;
           }
+          // Fix #2: Validate action params against the registered Zod schema.
+          // This catches missing required params (e.g. sendToModel without label)
+          // at server-side validation time so the model gets an early, actionable
+          // error instead of a silent runtime failure.
+          const actionDef = ACTION_REGISTRY.get(binding.action);
+          if (actionDef) {
+            const paramsResult = actionDef.params.safeParse(binding.params ?? {});
+            if (!paramsResult.success) {
+              const summary = summariseZodError(paramsResult.error);
+              failures.push(
+                `element "${key}": on.${eventName} action "${binding.action}" has invalid params: ${summary}`,
+              );
+            }
+          }
+
           if (binding.action === 'setState') {
             const statePath = binding.params?.statePath;
             if (typeof statePath !== 'string' || !statePath.startsWith('/')) {

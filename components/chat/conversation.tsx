@@ -52,6 +52,16 @@ function stripSlashKeys(
 
 /**
  * Shape of the `data` payload in a `data-press` user message part.
+ *
+ * Slim format (Fix #13): only the fields actually needed are stored — `label`
+ * for the chip UI, `message` and `data` for model context, `sourceRootId` for
+ * reload-survivable lock recovery, and `mode` for Phase 4 readiness (endpoint
+ * chips will set mode: 'endpoint' and must NOT trigger the lock logic).
+ *
+ * The `params` blob is intentionally absent: it contained both `label` and
+ * `message` (redundant) plus `data` (now stored directly). Removing it keeps
+ * the persisted part lean.
+ *
  * This is a UI-only part — `convertToModelMessages` ignores `data-*` parts
  * by default (no `convertDataPart` option is passed in route.ts), so it
  * never reaches the model. The text part in the same message IS sent.
@@ -59,7 +69,10 @@ function stripSlashKeys(
 export interface PressData {
   action: string;
   label: string;
-  params: Record<string, unknown>;
+  /** Optional extra context the model should see, in addition to the label. */
+  message?: string;
+  /** Optional structured payload echoed to the model as JSON. */
+  data?: Record<string, unknown>;
   /**
    * Root id of the renderUI card that produced this press. Used on reload to
    * pre-lock cards that were already used in earlier turns — the in-memory
@@ -67,6 +80,18 @@ export interface PressData {
    * can recover the "this card has been pressed" signal from message history.
    */
   sourceRootId?: string;
+  /**
+   * Dispatch mode of the action that produced this chip (Fix #12 / Phase 4).
+   *
+   * - `'model'`    — this chip locked the card; useMemo uses this to skip
+   *                  endpoint chips that must NOT trigger the lock.
+   * - `'endpoint'` — Phase 4: fires a backend call, card stays unlocked.
+   * - `'local'`    — theoretical; local presses don't produce chips today.
+   *
+   * Absent on legacy chips (pre-Fix #12 persisted data) — treated as unlocked
+   * for graceful degradation.
+   */
+  mode?: 'local' | 'model' | 'endpoint';
 }
 
 /**
@@ -77,24 +102,6 @@ export interface PressData {
  */
 export function messageHasPressChip(m: UIMessage): boolean {
   return (m.parts ?? []).some((p) => p.type === 'data-press');
-}
-
-/**
- * Returns true when any message in the transcript has a `data-press` chip
- * whose `sourceRootId` matches the given root id. Used by RenderUICard to
- * derive an initial lock state on page reload — the in-memory lock from the
- * original press is gone, but the chip is persisted, so we can infer the
- * card was already used and lock it again.
- */
-export function hasPressForRoot(messages: UIMessage[], rootId: string): boolean {
-  for (const m of messages) {
-    for (const p of m.parts ?? []) {
-      if (p.type !== 'data-press') continue;
-      const data = (p as { data?: PressData }).data;
-      if (data?.sourceRootId === rootId) return true;
-    }
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,8 +128,8 @@ function RenderUICard({
   sendMessage: SendMessage;
   /**
    * If true, the card mounts in the locked state. Computed by ChatConversation
-   * via `hasPressForRoot(messages, spec.root)` so cards that already produced
-   * a press in a prior reload-restored turn stay locked.
+   * via the `lockedRoots` useMemo so cards that already produced a press in
+   * a prior reload-restored turn stay locked.
    */
   initiallyLocked?: boolean;
 }) {
@@ -135,39 +142,62 @@ function RenderUICard({
   const handlers = useMemo(
     () => ({
       sendToModel: async (params: Record<string, unknown>) => {
-        if (lockedRef.current) return; // preempt double-fire in the same tick
+        // lockedRef guard: preempt double-fire in the same render tick.
+        // The lock is set optimistically BEFORE sendMessage so there is no
+        // window in which a second press could slip through.
+        if (lockedRef.current) return;
         lockedRef.current = true;
         setIsLocked(true);
+
         const label = typeof params.label === 'string' ? params.label : String(params.label ?? '');
         const message = typeof params.message === 'string' ? params.message : undefined;
         const data = params.data as Record<string, unknown> | undefined;
 
         // Compose the model-facing text injection.
-        let modelText = `[User pressed: ${label}`;
-        if (message) modelText += ` — ${message}`;
-        if (data && Object.keys(data).length > 0) modelText += ` — data: ${JSON.stringify(data)}`;
-        modelText += ']';
+        const modelText = [
+          `[User pressed: ${label}`,
+          message ? ` — ${message}` : '',
+          data && Object.keys(data).length > 0 ? ` — data: ${JSON.stringify(data)}` : '',
+          ']',
+        ].join('');
 
-        // Chip part is rendered in the transcript; text part is what the model
-        // sees (convertToModelMessages skips data-* parts when no convertDataPart
-        // is supplied). The AI SDK's UIMessagePart type only includes data-* in
-        // the generic UIDataTypes — for our untyped UIMessage we cast at the
-        // boundary to satisfy the prop schema while still emitting a valid part.
-        await sendMessage({
-          role: 'user',
-          parts: [
-            {
-              type: 'data-press',
-              data: {
-                action: 'sendToModel',
-                label,
-                params,
-                sourceRootId: spec.root,
-              },
-            } as unknown as UIMessage['parts'][number],
-            { type: 'text', text: modelText },
-          ],
-        });
+        // Fix #1: Wrap sendMessage in try/catch so a network failure or
+        // middleware rejection rolls back the lock. Without rollback the card
+        // would stay permanently greyed even though the model never saw the
+        // press, and the user would have no way to retry.
+        try {
+          // Chip part is rendered in the transcript; text part is what the
+          // model sees (convertToModelMessages skips data-* parts when no
+          // convertDataPart is supplied). The AI SDK's UIMessagePart type
+          // only includes data-* in the generic UIDataTypes — for our
+          // untyped UIMessage we cast at the boundary.
+          //
+          // Fix #13: Store only the slim fields needed — label (chip UI),
+          // message and data (model context), sourceRootId (lock recovery),
+          // mode (Phase 4 discriminator). The `params` blob is omitted.
+          await sendMessage({
+            role: 'user',
+            parts: [
+              {
+                type: 'data-press',
+                data: {
+                  action: 'sendToModel',
+                  label,
+                  message,
+                  data,
+                  sourceRootId: spec.root,
+                  mode: 'model',
+                } satisfies PressData,
+              } as unknown as UIMessage['parts'][number],
+              { type: 'text', text: modelText },
+            ],
+          });
+        } catch (err) {
+          // Rollback: the press did not reach the model; let the user retry.
+          lockedRef.current = false;
+          setIsLocked(false);
+          console.error('[RenderUICard] sendMessage failed', err);
+        }
       },
     }),
     [sendMessage, spec.root],
@@ -235,6 +265,30 @@ export function ChatConversation({
   onSuggest?: (text: string) => void;
   sendMessage: SendMessage;
 }) {
+  // Fix #3 (perf): derive the set of locked root ids once outside the message-
+  // map loop. Previously hasPressForRoot() was called per renderUI card inside
+  // the map, resulting in O(cards × messages) work. This useMemo is O(messages)
+  // and recomputes only when the messages array reference changes (i.e. when a
+  // new message arrives).
+  //
+  // Fix #12: only model-mode chips trigger lock. Endpoint chips (Phase 4) will
+  // set mode: 'endpoint' and must not lock their originating card (the endpoint
+  // action is re-fireable). Chips without a `mode` field (legacy, pre-Fix #12)
+  // are treated as unlocked for graceful degradation.
+  const lockedRoots = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of messages) {
+      for (const p of m.parts ?? []) {
+        if (p.type !== 'data-press') continue;
+        const chipData = (p as { data?: PressData }).data;
+        if (chipData?.sourceRootId && chipData.mode === 'model') {
+          s.add(chipData.sourceRootId);
+        }
+      }
+    }
+    return s;
+  }, [messages]);
+
   // Show the "Thinking..." indicator any time the turn is in flight AND the assistant
   // hasn't produced VISIBLE content yet. Reasoning parts aren't rendered on screen, so
   // a reasoning-first stream would otherwise hide the spinner during the long gap
@@ -340,13 +394,13 @@ export function ChatConversation({
                         // Fix #11 (part 2): stripSlashKeys normalises any persisted
                         // specs from before the server-side slash-rejection landed.
                         const initialState = stripSlashKeys(spec?.state ?? undefined);
-                        // Re-derive lock state from the transcript: if any
-                        // data-press chip in this session references this card's
-                        // root, the card was already used. The in-memory lock
-                        // resets across reloads but the chip persists, so this
-                        // gives us reload-survivable lock state without adding
-                        // a new persistence channel.
-                        const initiallyLocked = hasPressForRoot(messages, spec.root);
+                        // Re-derive lock state from the transcript: if any model-mode
+                        // data-press chip in this session references this card's root,
+                        // the card was already used. The in-memory lock resets across
+                        // reloads but the chip persists, so this gives us reload-
+                        // survivable lock state without adding a new persistence channel.
+                        // lockedRoots is computed once per render above (Fix #3 perf).
+                        const initiallyLocked = lockedRoots.has(spec.root);
                         return (
                           <div key={key} data-spec-id={spec?.root}>
                             <RenderUICard

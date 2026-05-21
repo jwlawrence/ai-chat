@@ -5,7 +5,8 @@
 
 import type { UIMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
-import { hasPressForRoot, messageHasPressChip, messageHasRenderUI } from './conversation';
+import type { PressData } from './conversation';
+import { messageHasPressChip, messageHasRenderUI } from './conversation';
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal UIMessage with the given parts
@@ -99,7 +100,10 @@ describe('messageHasPressChip — Phase 3', () => {
   it('returns true when a user message has a data-press part', () => {
     const m = makeMessage(
       [
-        { type: 'data-press', data: { action: 'sendToModel', label: 'Continue', params: {} } },
+        {
+          type: 'data-press',
+          data: { action: 'sendToModel', label: 'Continue', mode: 'model' } satisfies PressData,
+        },
         { type: 'text', text: '[User pressed: Continue]' },
       ] as unknown as UIMessage['parts'],
       'user',
@@ -127,16 +131,38 @@ describe('messageHasPressChip — Phase 3', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 3 follow-up: hasPressForRoot — reload-survivable lock derivation
+// Fix #3 (perf) + Fix #12: lockedRoots derivation — inline useMemo logic
+//
+// hasPressForRoot was a standalone exported function called per card inside the
+// message-map loop (O(cards × messages)). It has been replaced by a useMemo
+// that computes lockedRoots once per render (O(messages)).
+//
+// We test the derivation logic directly here as a pure unit test (no React
+// rendering required) by mirroring the useMemo body.
 // ---------------------------------------------------------------------------
 
-describe('hasPressForRoot — Phase 3', () => {
-  function makePressMsg(sourceRootId: string): UIMessage {
+// Mirror of the lockedRoots useMemo body from ChatConversation.
+function deriveLockedRoots(messages: UIMessage[]): Set<string> {
+  const s = new Set<string>();
+  for (const m of messages) {
+    for (const p of m.parts ?? []) {
+      if (p.type !== 'data-press') continue;
+      const chipData = (p as { data?: PressData }).data;
+      if (chipData?.sourceRootId && chipData.mode === 'model') {
+        s.add(chipData.sourceRootId);
+      }
+    }
+  }
+  return s;
+}
+
+describe('lockedRoots derivation — Fix #3 + Fix #12', () => {
+  function makePressMsg(sourceRootId: string, mode?: PressData['mode']): UIMessage {
     return makeMessage(
       [
         {
           type: 'data-press',
-          data: { action: 'sendToModel', label: 'Approve', params: {}, sourceRootId },
+          data: { action: 'sendToModel', label: 'Approve', sourceRootId, mode } satisfies PressData,
         } as unknown as UIMessage['parts'][number],
         { type: 'text', text: '[User pressed: Approve]' },
       ] as UIMessage['parts'],
@@ -144,40 +170,56 @@ describe('hasPressForRoot — Phase 3', () => {
     );
   }
 
-  it('returns true when any message carries a press chip for the given root', () => {
-    const messages: UIMessage[] = [
-      makeMessage([{ type: 'text', text: 'hi' }] as UIMessage['parts'], 'user'),
-      makePressMsg('card-1'),
-    ];
-    expect(hasPressForRoot(messages, 'card-1')).toBe(true);
+  it('adds root id when chip has mode: "model"', () => {
+    const messages: UIMessage[] = [makePressMsg('card-1', 'model')];
+    expect(deriveLockedRoots(messages).has('card-1')).toBe(true);
   });
 
-  it('returns false when no message references the given root', () => {
-    const messages: UIMessage[] = [makePressMsg('card-1')];
-    expect(hasPressForRoot(messages, 'card-2')).toBe(false);
+  it('does not add root id when chip has no mode (legacy graceful degradation)', () => {
+    const messages: UIMessage[] = [makePressMsg('card-1', undefined)];
+    expect(deriveLockedRoots(messages).has('card-1')).toBe(false);
   });
 
-  it('returns false for an empty transcript', () => {
-    expect(hasPressForRoot([], 'card-1')).toBe(false);
+  it('does not add root id when chip has mode: "endpoint" (Phase 4 — card stays unlocked)', () => {
+    const messages: UIMessage[] = [makePressMsg('card-1', 'endpoint')];
+    expect(deriveLockedRoots(messages).has('card-1')).toBe(false);
   });
 
-  it('returns false when a chip exists but has no sourceRootId (legacy chip)', () => {
+  it('does not add root id when chip has mode: "local"', () => {
+    const messages: UIMessage[] = [makePressMsg('card-1', 'local')];
+    expect(deriveLockedRoots(messages).has('card-1')).toBe(false);
+  });
+
+  it('returns empty set for an empty transcript', () => {
+    expect(deriveLockedRoots([]).size).toBe(0);
+  });
+
+  it('does not add root id when chip has no sourceRootId', () => {
     const legacy = makeMessage(
       [
         {
           type: 'data-press',
-          data: { action: 'sendToModel', label: 'Old', params: {} },
+          data: { action: 'sendToModel', label: 'Old', mode: 'model' } satisfies PressData,
         } as unknown as UIMessage['parts'][number],
       ] as UIMessage['parts'],
       'user',
     );
-    expect(hasPressForRoot([legacy], 'card-1')).toBe(false);
+    expect(deriveLockedRoots([legacy]).size).toBe(0);
   });
 
-  it('distinguishes chips for different cards in the same transcript', () => {
-    const messages: UIMessage[] = [makePressMsg('card-a'), makePressMsg('card-b')];
-    expect(hasPressForRoot(messages, 'card-a')).toBe(true);
-    expect(hasPressForRoot(messages, 'card-b')).toBe(true);
-    expect(hasPressForRoot(messages, 'card-c')).toBe(false);
+  it('accumulates multiple model-mode chips from different cards', () => {
+    const messages: UIMessage[] = [
+      makePressMsg('card-a', 'model'),
+      makePressMsg('card-b', 'model'),
+    ];
+    const roots = deriveLockedRoots(messages);
+    expect(roots.has('card-a')).toBe(true);
+    expect(roots.has('card-b')).toBe(true);
+    expect(roots.has('card-c')).toBe(false);
+  });
+
+  it('does not lock a card whose chip exists with non-matching root', () => {
+    const messages: UIMessage[] = [makePressMsg('card-x', 'model')];
+    expect(deriveLockedRoots(messages).has('card-y')).toBe(false);
   });
 });

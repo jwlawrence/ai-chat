@@ -339,6 +339,31 @@ describe('renderUI tool — Phase 3: unknown action names', () => {
     };
     await expect(execute(spec)).resolves.toBeDefined();
   });
+
+  it('throws naming params.label when sendToModel is missing the required label', async () => {
+    // Fix #2: Zod params validation should catch missing required fields and
+    // surface them as a server-side error so the model can self-correct.
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Go' },
+          on: { press: { action: 'sendToModel', params: {} } }, // missing label
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "btn"/);
+    expect(msg).toMatch(/sendToModel/);
+    // summariseZodError prefixes with "props." regardless of the schema being
+    // parsed — the important thing is that "label" is named in the error.
+    expect(msg).toMatch(/label/);
+  });
 });
 
 describe('prepareStep already-rendered detection (logic unit test)', () => {
