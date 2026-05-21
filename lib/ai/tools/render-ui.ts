@@ -6,12 +6,39 @@ import { catalog, catalogPrompt, validateElementProps } from '@/lib/json-render/
 // Input schema — envelope only; catalog prop schemas run in execute()
 // ---------------------------------------------------------------------------
 
+// Visibility condition — accepts boolean, `{ $state: "/path" }`, and the
+// composite forms json-render's evaluateVisibility recognises. Kept loose
+// (z.unknown() inside object shapes) so future condition operators don't
+// require a schema bump.
+const visibilityConditionSchema: z.ZodType = z.union([
+  z.boolean(),
+  z.record(z.string(), z.unknown()),
+]);
+
+// Action binding for element-level `on.<event>` handlers. The only built-in
+// action right now is `setState` ({ statePath: "/key", value: <any> }).
+const actionBindingSchema = z.object({
+  action: z.string().describe('Action name. Built-in: "setState".'),
+  params: z.record(z.string(), z.unknown()).optional().describe('Action params; shape depends on the action.'),
+});
+
 const elementSchema = z.object({
   type: z.string().describe('Component name from the catalog (e.g. "Card", "Heading").'),
   props: z.record(z.string(), z.unknown()).describe('Props object whose shape matches the component.'),
   children: z
     .array(z.string())
     .describe('Array of child element keys. Use [] for leaf elements.'),
+  visible: visibilityConditionSchema
+    .optional()
+    .describe(
+      'Optional visibility condition. Examples: true | false | { "$state": "/open" } | { "eq": ["/mode", "edit"] } | { "not": { "$state": "/hidden" } }.',
+    ),
+  on: z
+    .record(z.string(), actionBindingSchema)
+    .optional()
+    .describe(
+      'Optional event bindings. The key is the event name (e.g. "press" on a Button); the value is { action, params }. Example: { "press": { "action": "setState", "params": { "statePath": "/open", "value": true } } }.',
+    ),
 });
 
 const specSchema = z.object({
@@ -20,6 +47,12 @@ const specSchema = z.object({
     .record(z.string(), elementSchema)
     .describe(
       'REQUIRED. Map from element key (string) to its definition. Must include the `root` key. Pass the full elements map in the same call as `root` — never call with only `root`.',
+    ),
+  state: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Optional initial state. Use plain keys without leading slashes (e.g. { "open": false }); the `statePath` and `$state` references then use leading slashes (e.g. "/open").',
     ),
 });
 
