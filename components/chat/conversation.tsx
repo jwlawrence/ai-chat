@@ -60,6 +60,13 @@ export interface PressData {
   action: string;
   label: string;
   params: Record<string, unknown>;
+  /**
+   * Root id of the renderUI card that produced this press. Used on reload to
+   * pre-lock cards that were already used in earlier turns — the in-memory
+   * lock state resets across reloads, but the chip persists in the DB so we
+   * can recover the "this card has been pressed" signal from message history.
+   */
+  sourceRootId?: string;
 }
 
 /**
@@ -70,6 +77,24 @@ export interface PressData {
  */
 export function messageHasPressChip(m: UIMessage): boolean {
   return (m.parts ?? []).some((p) => p.type === 'data-press');
+}
+
+/**
+ * Returns true when any message in the transcript has a `data-press` chip
+ * whose `sourceRootId` matches the given root id. Used by RenderUICard to
+ * derive an initial lock state on page reload — the in-memory lock from the
+ * original press is gone, but the chip is persisted, so we can infer the
+ * card was already used and lock it again.
+ */
+export function hasPressForRoot(messages: UIMessage[], rootId: string): boolean {
+  for (const m of messages) {
+    for (const p of m.parts ?? []) {
+      if (p.type !== 'data-press') continue;
+      const data = (p as { data?: PressData }).data;
+      if (data?.sourceRootId === rootId) return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,16 +114,23 @@ function RenderUICard({
   spec,
   initialState,
   sendMessage,
+  initiallyLocked = false,
 }: {
   spec: Spec;
   initialState?: Record<string, unknown>;
   sendMessage: SendMessage;
+  /**
+   * If true, the card mounts in the locked state. Computed by ChatConversation
+   * via `hasPressForRoot(messages, spec.root)` so cards that already produced
+   * a press in a prior reload-restored turn stay locked.
+   */
+  initiallyLocked?: boolean;
 }) {
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState(initiallyLocked);
   // Ref mirrors isLocked so the guard inside handlers always sees the current
   // value. useMemo keeps handlers stable to avoid JSONUIProvider remounts that
   // would drop StateProvider state mid-turn.
-  const lockedRef = useRef(false);
+  const lockedRef = useRef(initiallyLocked);
 
   const handlers = useMemo(
     () => ({
@@ -126,14 +158,19 @@ function RenderUICard({
           parts: [
             {
               type: 'data-press',
-              data: { action: 'sendToModel', label, params },
+              data: {
+                action: 'sendToModel',
+                label,
+                params,
+                sourceRootId: spec.root,
+              },
             } as unknown as UIMessage['parts'][number],
             { type: 'text', text: modelText },
           ],
         });
       },
     }),
-    [sendMessage],
+    [sendMessage, spec.root],
   );
 
   const lock = () => {
@@ -307,12 +344,20 @@ export function ChatConversation({
                         // Fix #11 (part 2): stripSlashKeys normalises any persisted
                         // specs from before the server-side slash-rejection landed.
                         const initialState = stripSlashKeys(spec?.state ?? undefined);
+                        // Re-derive lock state from the transcript: if any
+                        // data-press chip in this session references this card's
+                        // root, the card was already used. The in-memory lock
+                        // resets across reloads but the chip persists, so this
+                        // gives us reload-survivable lock state without adding
+                        // a new persistence channel.
+                        const initiallyLocked = hasPressForRoot(messages, spec.root);
                         return (
                           <div key={key} data-spec-id={spec?.root}>
                             <RenderUICard
                               spec={spec}
                               initialState={initialState}
                               sendMessage={sendMessage}
+                              initiallyLocked={initiallyLocked}
                             />
                           </div>
                         );
