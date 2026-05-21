@@ -116,6 +116,48 @@ describe('catalog', () => {
 });
 
 // ---------------------------------------------------------------------------
+// URL validator — Fix #1: Image.src and Link.href reject javascript: URLs
+// ---------------------------------------------------------------------------
+
+describe('URL validators — http(s) enforcement', () => {
+  it('Image.src accepts a valid https URL', () => {
+    const result = validateElementProps('Image', {
+      src: 'https://example.com/img.png',
+      alt: 'A photo',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('Image.src rejects a javascript: URL', () => {
+    const result = validateElementProps('Image', {
+      src: 'javascript:alert(1)',
+      alt: 'XSS attempt',
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toBeDefined();
+  });
+
+  it('Link.href accepts a valid https URL', () => {
+    const result = validateElementProps('Link', {
+      href: 'https://example.com',
+      text: 'Visit',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('Link.href rejects a javascript: URL', () => {
+    const result = validateElementProps('Link', {
+      href: 'javascript:alert(1)',
+      text: 'Click me',
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Per-component prop validation via validateElementProps()
 //
 // catalog.validate() validates spec structure (root, element types, children).

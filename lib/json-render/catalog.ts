@@ -34,6 +34,15 @@ const schema = defineSchema((s) => ({
 // Prop schemas — 15 primitives
 // ---------------------------------------------------------------------------
 
+// Shared URL validator that rejects javascript: and other non-http(s) schemes
+// to prevent prompt-injection XSS vectors.
+const httpsUrl = z
+  .string()
+  .url()
+  .refine((v) => v.startsWith('https://') || v.startsWith('http://'), {
+    message: 'Must be an http(s) URL',
+  });
+
 // Shared option shape for Select
 const selectOption = z.object({
   value: z.string(),
@@ -87,7 +96,7 @@ export const catalog = defineCatalog(schema, {
 
     Image: {
       props: z.object({
-        src: z.string().url().describe('Must be an absolute URL starting with https://'),
+        src: httpsUrl.describe('Must be an absolute URL starting with https://'),
         alt: z.string().describe('Alternative text for accessibility'),
         caption: z.string().optional(),
       }),
@@ -96,7 +105,7 @@ export const catalog = defineCatalog(schema, {
 
     Link: {
       props: z.object({
-        href: z.string().url().describe('Must be an absolute URL starting with https://'),
+        href: httpsUrl.describe('Must be an absolute URL starting with https://'),
         text: z.string().describe('Link label shown to the user'),
       }),
       description: 'A navigable hyperlink.',
