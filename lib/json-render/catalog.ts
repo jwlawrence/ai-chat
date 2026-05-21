@@ -450,28 +450,46 @@ function buildCatalogPrompt(): string {
   }
 
   // -------------------------------------------------------------------------
-  // Model-mode actions section
+  // Mode sections — driven by ACTION_REGISTRY so Phase 4 endpoint actions
+  // auto-appear here once registered (no manual prompt updates needed).
   // -------------------------------------------------------------------------
-  lines.push('');
-  lines.push('## Model-mode actions (button press → new user turn → model responds)');
-  lines.push('');
+
+  /**
+   * Render a heading + param table for all actions of a given mode.
+   * Returns an empty array when no actions are registered for that mode,
+   * so the section simply does not appear in the prompt yet.
+   */
+  function modeSection(mode: ActionMode, title: string, intro: string): string[] {
+    const entries = [...ACTION_REGISTRY.entries()].filter(([, def]) => def.mode === mode);
+    if (entries.length === 0) return [];
+    const sectionLines: string[] = ['', `## ${title}`, '', intro, ''];
+    for (const [name, def] of entries) {
+      sectionLines.push(`### \`${name}\``);
+      sectionLines.push(def.description);
+      sectionLines.push('Params:');
+      const shape =
+        (def.params as unknown as { _zod?: { def?: { shape?: Record<string, z.ZodType> } } })._zod
+          ?.def?.shape ?? {};
+      for (const [paramName, paramSchema] of Object.entries(shape)) {
+        const isOpt =
+          (paramSchema as unknown as { _zod?: { def?: { type?: string } } })._zod?.def?.type ===
+          'optional';
+        const desc = (paramSchema as { description?: string }).description;
+        sectionLines.push(`  - \`${paramName}\`${isOpt ? '?' : ''} — ${desc ?? '(no description)'}`);
+      }
+      sectionLines.push('');
+    }
+    return sectionLines;
+  }
+
   lines.push(
-    'Model-mode actions send the user\'s press back to the model as a synthetic user turn. The model receives a text message and responds normally — it may call `renderUI` again or reply with text. Once a model-mode button is pressed, ALL model-mode buttons on that card are disabled (greyed out); local-mode buttons on the same card keep working.',
+    ...modeSection(
+      'model',
+      'Model-mode actions (button press → new user turn → model responds)',
+      "Model-mode actions send the user's press back to the model as a synthetic user turn. The model receives a text message and responds normally — it may call `renderUI` again or reply with text. Once a model-mode button is pressed, ALL model-mode buttons on that card are disabled (greyed out); local-mode buttons on the same card keep working.",
+    ),
   );
-  lines.push('');
-  lines.push('**Available model-mode action:**');
-  lines.push('');
-  lines.push('- `sendToModel` — synthesize a user turn. Params:');
-  lines.push(
-    '  - `label` (string, required) — Short label shown in the transcript chip. Keep it ≤30 chars (e.g. "Continue", "Approve", "Show more").',
-  );
-  lines.push(
-    '  - `message` (string, optional) — Extra context injected into the model message in addition to the label.',
-  );
-  lines.push(
-    '  - `data` (object, optional) — Structured payload echoed to the model as JSON.',
-  );
-  lines.push('');
+
   lines.push('**Example — a card with an Approve / Reject model-mode button pair:**');
   lines.push('```json');
   lines.push(
@@ -501,18 +519,15 @@ function buildCatalogPrompt(): string {
   lines.push('```');
   lines.push('');
   lines.push(
-    'Use model-mode actions when the user\'s choice should change the conversation — e.g. multi-step flows, approvals, navigation choices. Use local-mode `setState` when state changes should stay on the card.',
+    "Use model-mode actions when the user's choice should change the conversation — e.g. multi-step flows, approvals, navigation choices. Use local-mode `setState` when state changes should stay on the card.",
   );
-  lines.push('');
-  lines.push('## Local actions (client-side, no model involvement)');
-  lines.push('');
+
   lines.push(
-    'Actions let a Button (or other interactive element) mutate local state. The state change is purely client-side — the model never sees it.',
-  );
-  lines.push('');
-  lines.push('**Built-in actions** (always available, no custom handler required):');
-  lines.push(
-    '- `setState` — set a value in state. Params: `{ statePath: string, value: any }`. `statePath` is a JSON Pointer path like `"/open"` or `"/count"`.',
+    ...modeSection(
+      'local',
+      'Local actions (client-side, no model involvement)',
+      'Actions let a Button (or other interactive element) mutate local state. The state change is purely client-side — the model never sees it. Built-in local actions are always available without a custom handler.',
+    ),
   );
   lines.push('');
   lines.push('**Wiring an action to a Button press:**');
