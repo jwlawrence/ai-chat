@@ -408,7 +408,10 @@ function buildCatalogPrompt(): string {
     'Note: in `on.press` params and `visible` conditions, paths are JSON Pointers (start with `/`): `statePath: "/open"`, `{ "$state": "/open" }`. But in the top-level `state` seed, keys are plain: `{ "open": false }`.',
   );
   lines.push('');
-  lines.push('**Full toggle example** (Button toggles a panel):');
+  lines.push('**Toggle: single button that flips the state on each press.**');
+  lines.push(
+    'A plain `setState` with a fixed `value: true` only opens — repeated presses are no-ops. For true toggle behavior, use a `$cond` expression so `value` flips based on current state:',
+  );
   lines.push('```json');
   lines.push(
     JSON.stringify(
@@ -419,8 +422,18 @@ function buildCatalogPrompt(): string {
           card: { type: 'Card', props: {}, children: ['toggle-btn', 'detail-text'] },
           'toggle-btn': {
             type: 'Button',
-            props: { label: 'Show details' },
-            on: { press: { action: 'setState', params: { statePath: '/open', value: true } } },
+            props: { label: 'Toggle details' },
+            on: {
+              press: {
+                action: 'setState',
+                params: {
+                  statePath: '/open',
+                  // $cond evaluates the condition; if truthy → $then, else → $else.
+                  // Reads "if open is true, set false; else set true" — i.e. flip.
+                  value: { $cond: { $state: '/open' }, $then: false, $else: true },
+                },
+              },
+            },
             children: [],
           },
           'detail-text': {
@@ -429,6 +442,34 @@ function buildCatalogPrompt(): string {
             visible: { $state: '/open' },
             children: [],
           },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    '**Alternative: two buttons** (one labeled "Show", one labeled "Hide") with mirrored `visible` conditions so only the correct one shows at any time. Use this when the labels need to change with the state.',
+  );
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        'show-btn': {
+          type: 'Button',
+          props: { label: 'Show details' },
+          on: { press: { action: 'setState', params: { statePath: '/open', value: true } } },
+          visible: { $state: '/open', not: true },
+          children: [],
+        },
+        'hide-btn': {
+          type: 'Button',
+          props: { label: 'Hide details' },
+          on: { press: { action: 'setState', params: { statePath: '/open', value: false } } },
+          visible: { $state: '/open' },
+          children: [],
         },
       },
       null,
