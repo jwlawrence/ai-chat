@@ -123,6 +123,69 @@ describe('renderUI tool — Fix #5: dangling children', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fix #8: Cycle detection in children graph
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Fix #8: children-graph cycles', () => {
+  it('throws when an element references itself in children', async () => {
+    const bad = {
+      root: 'a',
+      elements: {
+        a: { type: 'Card', props: {}, children: ['a'] },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/cycle/i);
+    expect((err as Error).message).toMatch(/a -> a/);
+  });
+
+  it('throws when two elements reference each other (a -> b -> a)', async () => {
+    const bad = {
+      root: 'a',
+      elements: {
+        a: { type: 'Card', props: {}, children: ['b'] },
+        b: { type: 'Card', props: {}, children: ['a'] },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/cycle/i);
+  });
+
+  it('throws when a Tabs prop-child references an ancestor', async () => {
+    const bad = {
+      root: 'a',
+      elements: {
+        a: { type: 'Card', props: {}, children: ['t'] },
+        t: {
+          type: 'Tabs',
+          props: { tabs: [{ id: '1', label: 'One', children: ['a'] }] },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/cycle/i);
+  });
+
+  it('accepts an acyclic tree with shared leaves is not a cycle (DAG)', async () => {
+    // Two parents pointing to the same leaf is fine — it's a DAG, not a cycle.
+    const spec = {
+      root: 'root',
+      elements: {
+        root: { type: 'Card', props: {}, children: ['c1', 'c2'] },
+        c1: { type: 'Card', props: {}, children: ['leaf'] },
+        c2: { type: 'Card', props: {}, children: ['leaf'] },
+        leaf: { type: 'Heading', props: { level: 1, text: 'hi' }, children: [] },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fix #6: Unknown visibility operators
 // ---------------------------------------------------------------------------
 

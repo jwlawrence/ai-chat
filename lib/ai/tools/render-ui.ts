@@ -270,6 +270,20 @@ export const renderUI = tool({
       }
     }
 
+    // Fix #8 (server-side completion): detect cycles in the children graph.
+    // The client-side SpecRenderer.renderChildren has its own cycle guard for
+    // Tabs/Accordion prop children, but @json-render/react's upstream Renderer
+    // has no guard for standard `el.children` — a circular spec would stack-
+    // overflow in the browser. Reject cycles here before the spec leaves the
+    // server. Only run if the cross-reference pass found no dangling keys
+    // (DFS on a broken graph would be noisy).
+    if (failures.length === 0) {
+      const cycle = findChildrenCycle(spec);
+      if (cycle) {
+        failures.push(`children graph contains a cycle: ${cycle.join(' -> ')}`);
+      }
+    }
+
     if (failures.length > 0) {
       throw new Error(formatErrors(failures));
     }
@@ -277,3 +291,52 @@ export const renderUI = tool({
     return spec;
   },
 });
+
+/**
+ * DFS the spec's children graph (including Tabs/Accordion prop-level child
+ * references) and return the cycle path as a list of element keys if one is
+ * found, otherwise null. Assumes all referenced keys exist in spec.elements
+ * (caller should run the dangling-key pass first).
+ */
+function findChildrenCycle(spec: Spec): string[] | null {
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const colors = new Map<string, number>();
+  const stack: string[] = [];
+
+  function childKeysOf(key: string): string[] {
+    const el = spec.elements[key];
+    if (!el) return [];
+    const keys: string[] = [...(el.children ?? [])];
+    if (el.type === 'Tabs') {
+      const tabs = (el.props as { tabs?: Array<{ children?: string[] }> } | undefined)?.tabs;
+      if (Array.isArray(tabs)) for (const t of tabs) keys.push(...(t.children ?? []));
+    }
+    if (el.type === 'Accordion') {
+      const items = (el.props as { items?: Array<{ children?: string[] }> } | undefined)?.items;
+      if (Array.isArray(items)) for (const it of items) keys.push(...(it.children ?? []));
+    }
+    return keys;
+  }
+
+  function dfs(key: string): string[] | null {
+    const color = colors.get(key) ?? WHITE;
+    if (color === BLACK) return null;
+    if (color === GRAY) {
+      const cycleStart = stack.indexOf(key);
+      return [...stack.slice(cycleStart), key];
+    }
+    colors.set(key, GRAY);
+    stack.push(key);
+    for (const child of childKeysOf(key)) {
+      const found = dfs(child);
+      if (found) return found;
+    }
+    stack.pop();
+    colors.set(key, BLACK);
+    return null;
+  }
+
+  return dfs(spec.root);
+}
