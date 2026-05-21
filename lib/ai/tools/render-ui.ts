@@ -21,6 +21,18 @@ const visibilityConditionSchema: z.ZodType = z.union([
   z.record(z.string(), z.unknown()),
 ]);
 
+// onSuccess / onError shapes — json-render's native post-action state mutations.
+const onSuccessSchema = z.union([
+  z.object({ navigate: z.string() }),
+  z.object({ set: z.record(z.string(), z.unknown()) }),
+  z.object({ action: z.string() }),
+]);
+
+const onErrorSchema = z.union([
+  z.object({ set: z.record(z.string(), z.unknown()) }),
+  z.object({ action: z.string() }),
+]);
+
 // Action binding for element-level `on.<event>` handlers. The only built-in
 // action right now is `setState` ({ statePath: "/key", value: <any> }).
 // .passthrough() ensures unknown fields from the model aren't silently stripped
@@ -32,6 +44,12 @@ const actionBindingSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe('Action params; shape depends on the action.'),
+    onSuccess: onSuccessSchema.optional().describe(
+      'Optional: state mutations or navigation to apply on a successful response.',
+    ),
+    onError: onErrorSchema.optional().describe(
+      'Optional: state mutations to apply when the action fails.',
+    ),
   })
   .passthrough();
 
@@ -215,11 +233,24 @@ export const renderUI = tool({
         validateVisibility(el.visible, `element "${key}"`, failures);
       }
 
+      // Validate Tabs.valueStatePath starts with "/" when present.
+      if (el.type === 'Tabs') {
+        const tabsProps = el.props as { valueStatePath?: unknown } | undefined;
+        const vsp = tabsProps?.valueStatePath;
+        if (vsp !== undefined) {
+          if (typeof vsp !== 'string' || !vsp.startsWith('/')) {
+            failures.push(
+              `element "${key}" (Tabs): props.valueStatePath must be a string starting with "/" (e.g. "/mode"), got: ${JSON.stringify(vsp)}`,
+            );
+          }
+        }
+      }
+
       // Fix #18: setState bindings must have params.statePath starting with "/"
       // Phase 3: also reject unknown action names so the model gets early feedback
       // instead of a silent no-op at runtime.
       if (el.on) {
-        const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown> }>;
+        const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown>; onSuccess?: { set?: Record<string, unknown> }; onError?: { set?: Record<string, unknown> } }>;
         for (const [eventName, binding] of Object.entries(onBindings)) {
           const mode = resolveActionMode(binding.action);
           if (mode === undefined) {
@@ -250,6 +281,52 @@ export const renderUI = tool({
               failures.push(
                 `element "${key}": on.${eventName} setState requires params.statePath to be a non-empty string starting with "/" (e.g. "/open"), got: ${JSON.stringify(statePath)}`,
               );
+            }
+          }
+
+          // Validate underscore routing keys — endpoint-only, paths must start with "/".
+          const writeResponseTo = binding.params?._writeResponseTo;
+          const setPendingAt = binding.params?._setPendingAt;
+          if (writeResponseTo !== undefined || setPendingAt !== undefined) {
+            if (mode !== 'endpoint') {
+              failures.push(
+                `element "${key}": on.${eventName} _writeResponseTo/_setPendingAt are only valid for endpoint-mode actions, not "${binding.action}" (mode: ${mode})`,
+              );
+            } else {
+              if (writeResponseTo !== undefined) {
+                if (typeof writeResponseTo !== 'string' || !writeResponseTo.startsWith('/')) {
+                  failures.push(
+                    `element "${key}": on.${eventName} _writeResponseTo must be a string starting with "/" (e.g. "/weather"), got: ${JSON.stringify(writeResponseTo)}`,
+                  );
+                }
+              }
+              if (setPendingAt !== undefined) {
+                if (typeof setPendingAt !== 'string' || !setPendingAt.startsWith('/')) {
+                  failures.push(
+                    `element "${key}": on.${eventName} _setPendingAt must be a string starting with "/" (e.g. "/loading"), got: ${JSON.stringify(setPendingAt)}`,
+                  );
+                }
+              }
+            }
+          }
+
+          // Validate onSuccess.set and onError.set paths start with "/".
+          if (binding.onSuccess && 'set' in binding.onSuccess && binding.onSuccess.set) {
+            for (const path of Object.keys(binding.onSuccess.set)) {
+              if (!path.startsWith('/')) {
+                failures.push(
+                  `element "${key}": on.${eventName} onSuccess.set key "${path}" must start with "/" (e.g. "/loading")`,
+                );
+              }
+            }
+          }
+          if (binding.onError && 'set' in binding.onError && binding.onError.set) {
+            for (const path of Object.keys(binding.onError.set)) {
+              if (!path.startsWith('/')) {
+                failures.push(
+                  `element "${key}": on.${eventName} onError.set key "${path}" must start with "/" (e.g. "/error")`,
+                );
+              }
             }
           }
         }

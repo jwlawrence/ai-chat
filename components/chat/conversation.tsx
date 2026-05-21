@@ -2,12 +2,13 @@
 
 import type { UseChatHelpers } from '@ai-sdk/react';
 import type { Spec } from '@json-render/core';
+import type { StateStore } from '@json-render/core';
+import { createStateStore } from '@json-render/core';
 import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { UIMessage } from 'ai';
 import { Globe, MousePointerClick, Sparkles } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-
-type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
+import { toast } from 'sonner';
 import {
   Conversation,
   ConversationContent,
@@ -16,7 +17,10 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
 import { specSchema } from '@/lib/ai/tools/render-ui';
+import { ACTION_REGISTRY } from '@/lib/json-render/catalog';
 import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
+
+type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
 
 /**
  * Returns true when a message has at least one tool-renderUI part in any state.
@@ -105,6 +109,132 @@ export function messageHasPressChip(m: UIMessage): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Endpoint dispatcher factory — extracted for testability (I7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build one async handler per endpoint-mode action.
+ * Exported so unit tests can exercise it directly without mounting React.
+ */
+export function buildEndpointHandlers(opts: {
+  store: StateStore;
+  inFlightRef: { current: Map<string, symbol> };
+  actionNames: ReadonlySet<string>;
+}): Record<string, (params: Record<string, unknown>) => Promise<void>> {
+  const { store, inFlightRef, actionNames } = opts;
+  const entries = [...actionNames].map((actionName) => [
+    actionName,
+    async (params: Record<string, unknown>) => {
+      const writeResponseTo =
+        typeof params._writeResponseTo === 'string' ? params._writeResponseTo : undefined;
+      const setPendingAt =
+        typeof params._setPendingAt === 'string' ? params._setPendingAt : undefined;
+
+      const postParams = Object.fromEntries(
+        Object.entries(params).filter(([k]) => k !== '_writeResponseTo' && k !== '_setPendingAt'),
+      );
+
+      const key = writeResponseTo ?? actionName;
+      const token = Symbol();
+      inFlightRef.current.set(key, token);
+      const isLatest = () => inFlightRef.current.get(key) === token;
+
+      if (setPendingAt) {
+        store.set(setPendingAt, true);
+      }
+
+      try {
+        const res = await fetch(`/api/actions/${actionName}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(postParams),
+        });
+        if (!res.ok) {
+          if (isLatest()) toast.error(`Action "${actionName}" failed (${res.status})`);
+          return;
+        }
+        if (writeResponseTo) {
+          let body: unknown;
+          try {
+            body = await res.json();
+          } catch {
+            if (isLatest()) {
+              toast.error(`Action "${actionName}" returned an invalid response`);
+            }
+            return;
+          }
+          if (isLatest()) store.set(writeResponseTo, body);
+        }
+      } catch (err) {
+        if (isLatest()) toast.error(`Action "${actionName}" could not be reached`);
+        console.error('[RenderUICard] endpoint action failed', actionName, err);
+      } finally {
+        if (setPendingAt && isLatest()) {
+          store.set(setPendingAt, false);
+        }
+      }
+    },
+  ]);
+  return Object.fromEntries(entries);
+}
+
+/**
+ * Build the submitForm handler with mutable lock refs injected.
+ * Exported so unit tests can exercise lock/rollback behaviour without React.
+ */
+export function buildSubmitFormHandler(opts: {
+  store: StateStore;
+  lockedRef: { current: boolean };
+  setIsLocked: (v: boolean) => void;
+  sendMessage: SendMessage;
+  specRoot: string;
+}): (params: Record<string, unknown>) => Promise<void> {
+  const { store, lockedRef, setIsLocked, sendMessage, specRoot } = opts;
+  return async (params: Record<string, unknown>) => {
+    if (lockedRef.current) return;
+    lockedRef.current = true;
+    setIsLocked(true);
+    const formName = String(params.formName ?? '');
+    if (!formName) {
+      lockedRef.current = false;
+      setIsLocked(false);
+      return;
+    }
+    const formData = (store.get(`/${formName}`) as Record<string, unknown> | undefined) ?? {};
+    const label = String(params.label ?? `Submitted ${formName}`);
+    const message = typeof params.message === 'string' ? params.message : undefined;
+    const modelText = [
+      `[Submitted form ${formName}: ${JSON.stringify(formData)}`,
+      message ? ` — ${message}` : '',
+      ']',
+    ].join('');
+    try {
+      await sendMessage({
+        role: 'user',
+        parts: [
+          {
+            type: 'data-press',
+            data: {
+              action: 'submitForm',
+              label,
+              message,
+              data: formData,
+              sourceRootId: specRoot,
+              mode: 'model',
+            } satisfies PressData,
+          } as unknown as UIMessage['parts'][number],
+          { type: 'text', text: modelText },
+        ],
+      });
+    } catch (err) {
+      lockedRef.current = false;
+      setIsLocked(false);
+      console.error('[RenderUICard] submitForm failed', err);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // RenderUICard — per-card wrapper that owns lock state + model-mode dispatch
 // ---------------------------------------------------------------------------
 
@@ -139,8 +269,43 @@ function RenderUICard({
   // would drop StateProvider state mid-turn.
   const lockedRef = useRef(initiallyLocked);
 
-  const handlers = useMemo(
-    () => ({
+  // In-flight token map for endpoint actions.
+  // Keyed by writeResponseTo path (or actionName as fallback). Each concurrent
+  // press generates a unique Symbol; only the latest token's settlement writes
+  // state, preventing last-writer-wins races from stale parallel responses.
+  const inFlightRef = useRef(new Map<string, symbol>());
+
+  // Controlled StateStore — one per card mount, empty deps so it's stable.
+  // Passing store={store} to JSONUIProvider instead of initialState={...}
+  // lets us call store.set() from outside the React tree (e.g. from the
+  // endpoint dispatcher) and have the rendered UI react immediately.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: store is intentionally created once per mount; initialState is the seed value only
+  const store = useMemo(() => createStateStore(stripSlashKeys(initialState) ?? {}), []);
+
+  // Derive the set of endpoint-mode action names from ACTION_REGISTRY once at
+  // module level. This is stable across renders — the registry is a module-level
+  // constant — so the useMemo deps array only needs the per-card values below.
+  const endpointActionNames = useMemo(
+    () =>
+      new Set(
+        [...ACTION_REGISTRY.entries()]
+          .filter(([, def]) => def.mode === 'endpoint')
+          .map(([name]) => name),
+      ),
+    [],
+  );
+
+  const handlers = useMemo(() => {
+    // Build one endpoint handler per registered endpoint-mode action via the
+    // exported factory.  See buildEndpointHandlers for the dispatch contract.
+    const endpointEntries = buildEndpointHandlers({
+      store,
+      inFlightRef,
+      actionNames: endpointActionNames,
+    });
+
+    return {
+      ...endpointEntries,
       sendToModel: async (params: Record<string, unknown>) => {
         // lockedRef guard: preempt double-fire in the same render tick.
         // The lock is set optimistically BEFORE sendMessage so there is no
@@ -199,9 +364,16 @@ function RenderUICard({
           console.error('[RenderUICard] sendMessage failed', err);
         }
       },
-    }),
-    [sendMessage, spec.root],
-  );
+
+      submitForm: buildSubmitFormHandler({
+        store,
+        lockedRef,
+        setIsLocked,
+        sendMessage,
+        specRoot: spec.root,
+      }),
+    };
+  }, [sendMessage, spec.root, endpointActionNames, store]);
 
   // Preprocess the spec to inject disabled:true into model-mode Buttons (and
   // Phase 5 form fields) when locked. Both Renderer and SpecRenderer.renderChildren
@@ -210,7 +382,7 @@ function RenderUICard({
   const effectiveSpec = useMemo(() => applyLockToSpec(spec, isLocked), [spec, isLocked]);
 
   return (
-    <JSONUIProvider registry={registry} initialState={initialState} handlers={handlers}>
+    <JSONUIProvider registry={registry} store={store} handlers={handlers}>
       <SpecRenderer spec={effectiveSpec} registry={registry}>
         <Renderer spec={effectiveSpec} registry={registry} />
       </SpecRenderer>

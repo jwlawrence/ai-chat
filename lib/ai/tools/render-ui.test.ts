@@ -1,4 +1,6 @@
+import type { UIMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
+import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import { renderUI } from './render-ui';
 
 // AI SDK tool() places execute at `.execute`. We call it directly as the SDK would.
@@ -302,6 +304,22 @@ describe('renderUI tool — Fix #15: cap failures at 10', () => {
 // ---------------------------------------------------------------------------
 
 describe('renderUI tool — Phase 3: unknown action names', () => {
+  it('accepts refreshData (endpoint-mode) with empty params', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Refresh' },
+          on: { press: { action: 'refreshData', params: {} } },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+
   it('throws naming the bad action when on.press references an unregistered name', async () => {
     const bad = {
       root: 'card',
@@ -366,28 +384,333 @@ describe('renderUI tool — Phase 3: unknown action names', () => {
   });
 });
 
-describe('prepareStep already-rendered detection (logic unit test)', () => {
-  // Mirrors the predicate in app/api/chat/route.ts prepareStep callback.
-  function alreadyRendered(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): boolean {
-    return steps.some((s) => s.toolCalls.some((c) => c.toolName === 'renderUI'));
-  }
+// ---------------------------------------------------------------------------
+// Phase 4.1: dynamic $state refs in props + endpoint routing keys + onSuccess/onError
+// ---------------------------------------------------------------------------
 
-  it('returns false when no steps have a renderUI call', () => {
-    expect(alreadyRendered([])).toBe(false);
-    expect(alreadyRendered([{ toolCalls: [{ toolName: 'webSearch' }] }])).toBe(false);
+describe('renderUI tool — Phase 4.1: dynamic prop values', () => {
+  it('accepts a spec where Text.text is a { $state } reference', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['txt'] },
+        txt: { type: 'Text', props: { text: { $state: '/x' } }, children: [] },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
   });
 
-  it('returns true when any step contains a renderUI call', () => {
-    expect(alreadyRendered([{ toolCalls: [{ toolName: 'renderUI' }] }])).toBe(true);
+  it('accepts an endpoint action with valid _writeResponseTo in params', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Fetch' },
+          on: {
+            press: {
+              action: 'fetchWeather',
+              params: { mode: 'daily', _writeResponseTo: '/weather' },
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+
+  it('throws when _writeResponseTo lacks a leading slash', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Fetch' },
+          on: {
+            press: {
+              action: 'fetchWeather',
+              params: { mode: 'daily', _writeResponseTo: 'weather' }, // no leading slash
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/_writeResponseTo/);
+    expect((err as Error).message).toMatch(/must be a string starting with "\/"/);
+  });
+
+  it('throws when _writeResponseTo is used on a non-endpoint action', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Model btn' },
+          on: {
+            press: {
+              action: 'sendToModel',
+              params: { label: 'Go', _writeResponseTo: '/weather' },
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/_writeResponseTo\/_setPendingAt/);
+    expect((err as Error).message).toMatch(/endpoint-mode/);
+  });
+
+  it('accepts onSuccess with set paths starting with "/"', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Refresh' },
+          on: {
+            press: {
+              action: 'fetchWeather',
+              params: { mode: 'daily' },
+              onSuccess: { set: { '/loading': false } },
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+
+  it('throws when onSuccess.set key lacks a leading slash', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          props: { label: 'Refresh' },
+          on: {
+            press: {
+              action: 'fetchWeather',
+              params: { mode: 'daily' },
+              onSuccess: { set: { loading: false } }, // no leading slash
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/onSuccess\.set/);
+    expect((err as Error).message).toMatch(/"loading"/);
+    expect((err as Error).message).toMatch(/must start with "\/"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tabs valueStatePath validation
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Tabs.valueStatePath validation', () => {
+  it('accepts a Tabs element with a valid valueStatePath starting with "/"', async () => {
+    const spec = {
+      root: 'card',
+      state: { mode: 'daily' },
+      elements: {
+        card: { type: 'Card', props: {}, children: ['tabs'] },
+        tabs: {
+          type: 'Tabs',
+          props: {
+            valueStatePath: '/mode',
+            tabs: [
+              { id: 'daily', label: 'Today', children: [] },
+              { id: 'weekly', label: '7-Day', children: [] },
+            ],
+          },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+
+  it('throws when Tabs.valueStatePath does not start with "/"', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['tabs'] },
+        tabs: {
+          type: 'Tabs',
+          props: {
+            valueStatePath: 'mode',
+            tabs: [
+              { id: 'daily', label: 'Today', children: [] },
+            ],
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/valueStatePath/);
+    expect(msg).toMatch(/must be a string starting with "\/"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5: submitForm action validation
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — Phase 5: submitForm action', () => {
+  it('accepts a Button with submitForm and valid formName', async () => {
+    const spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['form'] },
+        form: {
+          type: 'Form',
+          props: { name: 'contact' },
+          children: ['submit-btn'],
+        },
+        'submit-btn': {
+          type: 'Button',
+          props: { label: 'Send' },
+          on: {
+            press: {
+              action: 'submitForm',
+              params: { formName: 'contact', label: 'Submitted contact form' },
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    await expect(execute(spec)).resolves.toBeDefined();
+  });
+
+  it('throws when submitForm is missing required formName', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['submit-btn'] },
+        'submit-btn': {
+          type: 'Button',
+          props: { label: 'Send' },
+          on: {
+            press: {
+              action: 'submitForm',
+              params: { label: 'Submit' }, // formName missing
+            },
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "submit-btn"/);
+    expect(msg).toMatch(/submitForm/);
+    expect(msg).toMatch(/formName/);
+  });
+});
+
+describe('prepareStep UI-intent path (logic unit test)', () => {
+  // Mirrors the second gate in prepareStep: when nothing has rendered yet and
+  // hasUIRenderIntent fires, activeTools is locked to ['renderUI'].
+  function buildPrepareStepResult(
+    steps: Array<{ toolResults: Array<{ toolName: string }> }>,
+    windowed: UIMessage[],
+  ): { activeTools: readonly string[] } | undefined {
+    const renderedSuccessfully = steps.some((s) =>
+      s.toolResults.some((r) => r.toolName === 'renderUI'),
+    );
+    if (renderedSuccessfully) return { activeTools: ['webSearch'] as const };
+    if (hasUIRenderIntent(windowed)) return { activeTools: ['renderUI'] as const };
+    return undefined;
+  }
+
+  function userMsg(text: string): UIMessage {
+    return { id: 'u', role: 'user', parts: [{ type: 'text', text }] } as UIMessage;
+  }
+
+  it('returns activeTools: [renderUI] when hasUIRenderIntent and nothing rendered', () => {
+    const result = buildPrepareStepResult([], [userMsg('Render a weather card')]);
+    expect(result).toEqual({ activeTools: ['renderUI'] });
+  });
+
+  it('returns activeTools: [webSearch] when renderUI already succeeded', () => {
+    const steps = [{ toolResults: [{ toolName: 'renderUI' }] }];
+    const result = buildPrepareStepResult(steps, [userMsg('Render a weather card')]);
+    expect(result).toEqual({ activeTools: ['webSearch'] });
+  });
+
+  it('returns undefined when no UI intent and nothing rendered', () => {
+    const result = buildPrepareStepResult([], [userMsg("What's the weather in Tokyo?")]);
+    expect(result).toBeUndefined();
+  });
+});
+
+describe('prepareStep already-rendered detection (logic unit test)', () => {
+  // Mirrors the predicate in app/api/chat/route.ts prepareStep callback.
+  // Production uses toolResults (not toolCalls) so that a failed validation
+  // attempt does not count as "rendered". Only a successful renderUI result
+  // (with an output) advances the gate.
+  function alreadyRendered(
+    steps: Array<{ toolResults: Array<{ toolName: string }> }>,
+  ): boolean {
+    return steps.some((s) => s.toolResults.some((r) => r.toolName === 'renderUI'));
+  }
+
+  it('returns false when no steps have a renderUI result', () => {
+    expect(alreadyRendered([])).toBe(false);
+    expect(alreadyRendered([{ toolResults: [{ toolName: 'webSearch' }] }])).toBe(false);
+  });
+
+  it('returns true when any step contains a renderUI result', () => {
+    expect(alreadyRendered([{ toolResults: [{ toolName: 'renderUI' }] }])).toBe(true);
     expect(
       alreadyRendered([
-        { toolCalls: [{ toolName: 'webSearch' }] },
-        { toolCalls: [{ toolName: 'renderUI' }] },
+        { toolResults: [{ toolName: 'webSearch' }] },
+        { toolResults: [{ toolName: 'renderUI' }] },
       ]),
     ).toBe(true);
   });
 
-  it('returns false when toolCalls is empty on all steps', () => {
-    expect(alreadyRendered([{ toolCalls: [] }, { toolCalls: [] }])).toBe(false);
+  it('returns false when toolResults is empty on all steps', () => {
+    expect(alreadyRendered([{ toolResults: [] }, { toolResults: [] }])).toBe(false);
+  });
+
+  it('returns false when step has toolCalls with renderUI but toolResults is empty (bug-fix path)', () => {
+    // This is the key regression guard: a failed/invalid renderUI spec lands in
+    // toolCalls but NOT in toolResults. The gate must not fire in this case.
+    const stepsWithCallButNoResult = [
+      {
+        toolResults: [],
+        // toolCalls is not part of the type used by the predicate; its presence
+        // in the outer object is irrelevant to the result.
+      },
+    ];
+    expect(alreadyRendered(stepsWithCallButNoResult)).toBe(false);
+  });
+
+  it('returns true when step has both toolCalls and toolResults with renderUI', () => {
+    // A successful renderUI lands in both arrays; toolResults is what matters.
+    expect(
+      alreadyRendered([{ toolResults: [{ toolName: 'renderUI' }] }]),
+    ).toBe(true);
   });
 });

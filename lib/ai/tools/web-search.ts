@@ -16,7 +16,7 @@ type BraveResponse = {
 
 export const webSearch = tool({
   description:
-    'Search the web for current information. Use this when the user asks about recent events, current facts, prices, news, or anything that may have changed since your knowledge cutoff. Do not call for general knowledge questions you can already answer.',
+    'Search the web for current information. Use this when the user asks about recent events, current facts, prices, news, or anything that may have changed since your knowledge cutoff. Do not call for general knowledge questions you can already answer. NEVER search for "renderUI", "json-render", action schemas, primitive vocabulary, response binding, or any internal-app concept — those live exclusively in the renderUI tool description and any web result will be irrelevant or misleading. For UI rendering tasks, call `renderUI` directly without a prior search.',
   inputSchema: z.object({
     query: z.string().min(1).describe('The search query'),
   }),

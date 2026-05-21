@@ -1,5 +1,6 @@
 import { defineCatalog, defineSchema } from '@json-render/core';
 import { z } from 'zod';
+import { dynBool, dynParam, dynStr } from './dynamic-value';
 
 // ---------------------------------------------------------------------------
 // Schema — flat element-map format (root + elements record)
@@ -44,12 +45,17 @@ const httpsUrl = z
   });
 
 // Shared option shape for Select
+// value and label are plain strings — dynStr() would accept { $state: "/path" } refs,
+// but resolvePropValue only resolves $state at the TOP level of a component's props.
+// Nested fields inside array-of-object props are not recursed into, so refs here
+// would render as [object Object]. Keep as z.string() until deep resolution lands.
 const selectOption = z.object({
   value: z.string(),
   label: z.string(),
 });
 
 // Shared tab shape for Tabs
+// label is plain string for the same reason as selectOption above.
 const tabItem = z.object({
   id: z.string(),
   label: z.string(),
@@ -57,6 +63,7 @@ const tabItem = z.object({
 });
 
 // Shared accordion item shape
+// label is plain string for the same reason as selectOption above.
 const accordionItem = z.object({
   id: z.string(),
   label: z.string(),
@@ -71,8 +78,8 @@ export const catalog = defineCatalog(schema, {
   components: {
     Card: {
       props: z.object({
-        title: z.string().optional().describe('Optional heading displayed at the top of the card'),
-        footer: z.string().optional().describe('Optional text rendered in the card footer'),
+        title: dynStr('Optional heading displayed at the top of the card').optional(),
+        footer: dynStr('Optional text rendered in the card footer').optional(),
       }),
       description:
         'A surface that groups related content. Body content is supplied via the element-level `children` array.',
@@ -81,15 +88,15 @@ export const catalog = defineCatalog(schema, {
     Heading: {
       props: z.object({
         level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).describe('h1–h4'),
-        text: z.string(),
+        text: dynStr(),
       }),
       description: 'A semantic heading at levels 1–4.',
     },
 
     Text: {
       props: z.object({
-        text: z.string(),
-        muted: z.boolean().optional().describe('Render in a subdued/muted colour'),
+        text: dynStr(),
+        muted: dynBool('Render in a subdued/muted colour').optional(),
       }),
       description: 'A paragraph of text.',
     },
@@ -97,8 +104,8 @@ export const catalog = defineCatalog(schema, {
     Image: {
       props: z.object({
         src: httpsUrl.describe('Must be an absolute URL starting with https://'),
-        alt: z.string().describe('Alternative text for accessibility'),
-        caption: z.string().optional(),
+        alt: dynStr('Alternative text for accessibility'),
+        caption: dynStr().optional(),
       }),
       description: 'An image with an optional caption.',
     },
@@ -106,19 +113,19 @@ export const catalog = defineCatalog(schema, {
     Link: {
       props: z.object({
         href: httpsUrl.describe('Must be an absolute URL starting with https://'),
-        text: z.string().describe('Link label shown to the user'),
+        text: dynStr('Link label shown to the user'),
       }),
       description: 'A navigable hyperlink.',
     },
 
     Button: {
       props: z.object({
-        label: z.string(),
+        label: dynStr(),
         variant: z
           .enum(['primary', 'secondary', 'ghost', 'destructive'])
           .optional()
           .describe('Visual style of the button'),
-        disabled: z.boolean().optional(),
+        disabled: dynBool().optional(),
       }),
       description:
         'A clickable button. Wire actions via the element-level `on.press` field (NOT inside props). Example: `"on": { "press": { "action": "setState", "params": { "statePath": "/open", "value": true } } }`.',
@@ -126,7 +133,11 @@ export const catalog = defineCatalog(schema, {
 
     List: {
       props: z.object({
-        ordered: z.boolean().optional().describe('True for <ol>, false/omitted for <ul>'),
+        ordered: dynBool('True for <ol>, false/omitted for <ul>').optional(),
+        // items uses plain z.string() — resolvePropValue does not recurse into
+        // array elements, so { $state: "/path" } refs here would render as
+        // [object Object]. Dynamic state refs only resolve at the top level of
+        // a component's props.
         items: z.array(z.string()).min(1).describe('Text items to display'),
       }),
       description: 'An ordered or unordered list of text items.',
@@ -135,8 +146,8 @@ export const catalog = defineCatalog(schema, {
     Input: {
       props: z.object({
         name: z.string().describe('Field name, used as the form key'),
-        label: z.string().optional(),
-        placeholder: z.string().optional(),
+        label: dynStr().optional(),
+        placeholder: dynStr().optional(),
         kind: z
           .enum(['text', 'email', 'number', 'password'])
           .optional()
@@ -148,7 +159,7 @@ export const catalog = defineCatalog(schema, {
     Select: {
       props: z.object({
         name: z.string().describe('Field name, used as the form key'),
-        label: z.string().optional(),
+        label: dynStr().optional(),
         options: z.array(selectOption).min(1).describe('Available choices'),
       }),
       description: 'A dropdown select field.',
@@ -157,7 +168,7 @@ export const catalog = defineCatalog(schema, {
     Checkbox: {
       props: z.object({
         name: z.string().describe('Field name, used as the form key'),
-        label: z.string().describe('Label displayed next to the checkbox'),
+        label: dynStr('Label displayed next to the checkbox'),
       }),
       description: 'A boolean checkbox with a label.',
     },
@@ -172,6 +183,12 @@ export const catalog = defineCatalog(schema, {
 
     Tabs: {
       props: z.object({
+        valueStatePath: z
+          .string()
+          .optional()
+          .describe(
+            'Optional JSON Pointer path (starts with "/"). When set, the Tabs become controlled: the active tab is read from this state path, and clicking a tab writes the new tab id to it. Pair with elements elsewhere in the spec that bind to the same path (e.g. via `{ "$state": "/path" }`) to react to tab changes.',
+          ),
         tabs: z
           .array(tabItem)
           .min(1)
@@ -195,15 +212,15 @@ export const catalog = defineCatalog(schema, {
         tone: z
           .enum(['info', 'success', 'warning', 'danger'])
           .describe('Semantic colour of the callout'),
-        title: z.string().optional().describe('Bold heading displayed above the callout text'),
-        text: z.string().describe('Main callout message'),
+        title: dynStr('Bold heading displayed above the callout text').optional(),
+        text: dynStr('Main callout message'),
       }),
       description: 'A highlighted notice block in one of four semantic tones.',
     },
 
     Badge: {
       props: z.object({
-        label: z.string(),
+        label: dynStr(),
         tone: z
           .enum(['default', 'success', 'warning', 'danger'])
           .optional()
@@ -266,7 +283,9 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
       params: z.object({
         label: z
           .string()
-          .describe('Short user-facing label shown in the transcript chip (e.g. "Continue", "Approve").'),
+          .describe(
+            'Short user-facing label shown in the transcript chip (e.g. "Continue", "Approve").',
+          ),
         message: z
           .string()
           .optional()
@@ -275,6 +294,49 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
           .record(z.string(), z.unknown())
           .optional()
           .describe('Optional structured payload echoed back to the model.'),
+      }),
+    },
+  ],
+  [
+    'submitForm',
+    {
+      mode: 'model',
+      description:
+        'Submit a form. Gathers all field values from state at /<formName>/* and sends them to the model as a structured payload along with a transcript chip. The card locks the moment submit is pressed (same lock semantics as sendToModel). Use this when the user fills a form whose values the model should reason about.',
+      params: z.object({
+        formName: z
+          .string()
+          .describe("The Form element's `name` prop. Used to read /{name}/* from state."),
+        label: z
+          .string()
+          .optional()
+          .describe('Transcript chip label. Defaults to "Submitted <formName>".'),
+        message: z
+          .string()
+          .optional()
+          .describe('Optional extra context the model should see in addition to the form data.'),
+      }),
+    },
+  ],
+  [
+    'refreshData',
+    {
+      mode: 'endpoint',
+      description:
+        'Fire a backend POST to /api/actions/refreshData. The model never sees this press and the card stays interactive so the user can press again. Use endpoint-mode actions for refresh, save, mark-done, and delete-style operations where no model response is needed.',
+      params: z.object({}),
+    },
+  ],
+  [
+    'fetchWeather',
+    {
+      mode: 'endpoint',
+      description:
+        'Fetch current weather data from the backend. Returns { summary, mode } in the response body. Pair with _writeResponseTo to update a display Text prop reactively. Use _setPendingAt to show a loading indicator while the request is in flight.',
+      params: z.object({
+        mode: dynParam(z.union([z.literal('daily'), z.literal('weekly')])).describe(
+          'Which forecast view: "daily" or "weekly". Required — read from state using { "$state": "/mode" } so it reacts to the user\'s tab selection.',
+        ),
       }),
     },
   ],
@@ -355,9 +417,8 @@ function formatZodDef(def: Record<string, unknown> | null): string {
         .map((k) => JSON.stringify(k))
         .join(' | ');
     case 'array': {
-      const elemDef = (
-        def.element as { _zod?: { def?: Record<string, unknown> } } | undefined
-      )?._zod?.def;
+      const elemDef = (def.element as { _zod?: { def?: Record<string, unknown> } } | undefined)
+        ?._zod?.def;
       if (!elemDef) return '<value>[]';
       if (elemDef.type === 'object') {
         const pairs = Object.entries(
@@ -368,9 +429,8 @@ function formatZodDef(def: Record<string, unknown> | null): string {
       return `${formatZodDef(elemDef)}[]`;
     }
     case 'optional': {
-      const inner = (
-        def.innerType as { _zod?: { def?: Record<string, unknown> } } | undefined
-      )?._zod?.def;
+      const inner = (def.innerType as { _zod?: { def?: Record<string, unknown> } } | undefined)
+        ?._zod?.def;
       return inner ? formatZodDef(inner) : '<value>';
     }
     default:
@@ -379,7 +439,9 @@ function formatZodDef(def: Record<string, unknown> | null): string {
 }
 
 function formatZodType(schema: z.ZodType): string {
-  return formatZodDef((schema as unknown as { _zod?: { def?: Record<string, unknown> } })._zod?.def ?? null);
+  return formatZodDef(
+    (schema as unknown as { _zod?: { def?: Record<string, unknown> } })._zod?.def ?? null,
+  );
 }
 
 /**
@@ -430,8 +492,8 @@ function buildCatalogPrompt(): string {
     lines.push(`### ${name}`);
     lines.push(def.description);
     const shape =
-      (def.props as unknown as { _zod?: { def?: { shape?: Record<string, z.ZodType> } } })._zod
-        ?.def?.shape ?? {};
+      (def.props as unknown as { _zod?: { def?: { shape?: Record<string, z.ZodType> } } })._zod?.def
+        ?.shape ?? {};
     const propEntries = Object.entries(shape);
     if (propEntries.length === 0) {
       lines.push('Props: (none)');
@@ -450,7 +512,37 @@ function buildCatalogPrompt(): string {
   }
 
   // -------------------------------------------------------------------------
-  // Mode sections — driven by ACTION_REGISTRY so Phase 4 endpoint actions
+  // Dynamic prop values section
+  // -------------------------------------------------------------------------
+
+  lines.push('');
+  lines.push('## Dynamic prop values');
+  lines.push('');
+  lines.push(
+    'Top-level user-facing display props (text, label, title, footer, caption, alt, placeholder, callout/badge/heading text, button label, image caption/alt, link text, muted, disabled, ordered) accept either a literal value OR `{ "$state": "/path" }`, which reactively resolves to the current state value at render time.',
+  );
+  lines.push('');
+  lines.push(
+    'URL props (`src`, `href`) and enum props (`variant`, `tone`, `kind`, `level`) stay literal-only.',
+  );
+  lines.push('');
+  lines.push(
+    "Dynamic state refs only resolve at the top level of a component's props. Nested fields inside array-of-object props (List items, Tab/Accordion labels, Select options) must be literal strings.",
+  );
+  lines.push('');
+  lines.push('Example — Text whose content comes from state:');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      { type: 'Text', props: { text: { $state: '/weather/summary' } }, children: [] },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+
+  // -------------------------------------------------------------------------
+  // Mode sections — driven by ACTION_REGISTRY so endpoint actions
   // auto-appear here once registered (no manual prompt updates needed).
   // -------------------------------------------------------------------------
 
@@ -475,7 +567,9 @@ function buildCatalogPrompt(): string {
           (paramSchema as unknown as { _zod?: { def?: { type?: string } } })._zod?.def?.type ===
           'optional';
         const desc = (paramSchema as { description?: string }).description;
-        sectionLines.push(`  - \`${paramName}\`${isOpt ? '?' : ''} — ${desc ?? '(no description)'}`);
+        sectionLines.push(
+          `  - \`${paramName}\`${isOpt ? '?' : ''} — ${desc ?? '(no description)'}`,
+        );
       }
       sectionLines.push('');
     }
@@ -497,17 +591,31 @@ function buildCatalogPrompt(): string {
       {
         root: 'review-card',
         elements: {
-          'review-card': { type: 'Card', props: { title: 'Review required' }, children: ['approve-btn', 'reject-btn'] },
+          'review-card': {
+            type: 'Card',
+            props: { title: 'Review required' },
+            children: ['approve-btn', 'reject-btn'],
+          },
           'approve-btn': {
             type: 'Button',
             props: { label: 'Approve', variant: 'primary' },
-            on: { press: { action: 'sendToModel', params: { label: 'Approve', message: 'User approved the request.' } } },
+            on: {
+              press: {
+                action: 'sendToModel',
+                params: { label: 'Approve', message: 'User approved the request.' },
+              },
+            },
             children: [],
           },
           'reject-btn': {
             type: 'Button',
             props: { label: 'Reject', variant: 'destructive' },
-            on: { press: { action: 'sendToModel', params: { label: 'Reject', message: 'User rejected the request.' } } },
+            on: {
+              press: {
+                action: 'sendToModel',
+                params: { label: 'Reject', message: 'User rejected the request.' },
+              },
+            },
             children: [],
           },
         },
@@ -521,6 +629,187 @@ function buildCatalogPrompt(): string {
   lines.push(
     "Use model-mode actions when the user's choice should change the conversation — e.g. multi-step flows, approvals, navigation choices. Use local-mode `setState` when state changes should stay on the card.",
   );
+
+  // -------------------------------------------------------------------------
+  // Form submission section
+  // -------------------------------------------------------------------------
+
+  lines.push('');
+  lines.push('## Form submission');
+  lines.push('');
+  lines.push(
+    'Use a `Form` element (with a `name` prop) to group `Input`, `Select`, and `Checkbox` fields. The `Form` name is the state subtree key — fields inside the form **auto-bind** to `/{formName}/{field.name}` in state. You do NOT need to add `$bindState` or `$state` refs to field props manually; the Form auto-binding handles it.',
+  );
+  lines.push('');
+  lines.push(
+    'To submit, add a `Button` with `on.press.action = "submitForm"` and `params.formName = "<the form name>"`. The card locks on submit (same as `sendToModel`); the form values reach the model as a chip + text injection.',
+  );
+  lines.push('');
+  lines.push(
+    'Optionally seed initial field values in the top-level `state` object: `{ "<formName>": { "<fieldName>": <value>, ... } }`. This ensures consistent initial display.',
+  );
+  lines.push('');
+  lines.push('**Example — a contact form with email, topic, and a subscribe checkbox:**');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'contact-card',
+        state: { contact: { email: '', topic: 'general', subscribe: false } },
+        elements: {
+          'contact-card': {
+            type: 'Card',
+            props: { title: 'Contact us' },
+            children: ['contact-form'],
+          },
+          'contact-form': {
+            type: 'Form',
+            props: { name: 'contact' },
+            children: ['email-input', 'topic-select', 'subscribe-check', 'submit-btn'],
+          },
+          'email-input': {
+            type: 'Input',
+            props: { name: 'email', label: 'Email', kind: 'email', placeholder: 'you@example.com' },
+            children: [],
+          },
+          'topic-select': {
+            type: 'Select',
+            props: {
+              name: 'topic',
+              label: 'Topic',
+              options: [
+                { value: 'general', label: 'General' },
+                { value: 'support', label: 'Support' },
+                { value: 'billing', label: 'Billing' },
+              ],
+            },
+            children: [],
+          },
+          'subscribe-check': {
+            type: 'Checkbox',
+            props: { name: 'subscribe', label: 'Subscribe to updates' },
+            children: [],
+          },
+          'submit-btn': {
+            type: 'Button',
+            props: { label: 'Send', variant: 'primary' },
+            on: {
+              press: {
+                action: 'submitForm',
+                params: { formName: 'contact', label: 'Submitted contact form' },
+              },
+            },
+            children: [],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    'Common mistake: do NOT add `$bindState` or `$state` refs to `Input`, `Select`, or `Checkbox` props manually — Form auto-binding handles it. Manual binding would conflict with the auto-binding and produce unexpected behavior.',
+  );
+  lines.push('');
+
+  lines.push(
+    ...modeSection(
+      'endpoint',
+      'Endpoint-mode actions (backend call, no model involvement)',
+      'Endpoint-mode actions POST to a backend route when the button is pressed. The model never sees the press and the card stays interactive — the user can press again (useful for refetch-style operations). Use endpoint-mode for refresh, save, mark-done, and delete-style operations where no model response is needed.',
+    ),
+  );
+
+  lines.push('**Response binding** — endpoint action params support two optional routing keys:');
+  lines.push(
+    '- `_writeResponseTo: "/path"` — on success, the parsed JSON response body is written to this state path.',
+  );
+  lines.push(
+    '- `_setPendingAt: "/path"` — set to `true` while the request is in flight, `false` when it settles (success or error).',
+  );
+  lines.push('');
+  lines.push(
+    'These routing keys are stripped before the POST reaches the server; the action handler only sees the remaining params.',
+  );
+  lines.push('');
+  lines.push(
+    "You may also use json-render's native `onSuccess` / `onError` siblings on the binding for static state mutations after the call:",
+  );
+  lines.push('- `onSuccess: { set: { "/path": value } }` — write static values on a 2xx response.');
+  lines.push('- `onError: { set: { "/path": value } }` — write static values on failure.');
+  lines.push('');
+  lines.push(
+    'Two-way tabs binding pattern: set `props.valueStatePath` on the Tabs element to a JSON Pointer (e.g. `/mode`). The Tabs read/write that state path automatically; no per-tab `on.*` wiring is needed.',
+  );
+  lines.push('');
+  lines.push('**Example — weather card with tabs, refresh button, and reactive display:**');
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'weather-card',
+        state: { mode: 'daily', loading: false, weather: { summary: 'Press refresh to load.' } },
+        elements: {
+          'weather-card': {
+            type: 'Card',
+            props: { title: 'Weather' },
+            children: ['mode-tabs', 'refresh-btn', 'loading-text', 'weather-text'],
+          },
+          'mode-tabs': {
+            type: 'Tabs',
+            props: {
+              valueStatePath: '/mode',
+              tabs: [
+                { id: 'daily', label: 'Today', children: [] },
+                { id: 'weekly', label: '7-Day', children: [] },
+              ],
+            },
+            children: [],
+          },
+          'refresh-btn': {
+            type: 'Button',
+            props: { label: 'Refresh', variant: 'secondary' },
+            on: {
+              press: {
+                action: 'fetchWeather',
+                params: {
+                  mode: { $state: '/mode' },
+                  _writeResponseTo: '/weather',
+                  _setPendingAt: '/loading',
+                },
+              },
+            },
+            children: [],
+          },
+          'loading-text': {
+            type: 'Text',
+            props: { text: 'Loading…', muted: true },
+            visible: { $state: '/loading' },
+            children: [],
+          },
+          'weather-text': {
+            type: 'Text',
+            props: { text: { $state: '/weather/summary' } },
+            children: [],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push('');
+  lines.push(
+    'Common mistake: do NOT nest `on.<event>` inside individual tabs[i] entries — tabs[i] only carries `id`, `label`, and `children`. The Tabs primitive is bound through `props.valueStatePath`, not per-tab event handlers.',
+  );
+  lines.push('');
+  lines.push(
+    'Endpoint-action params with dynamic values from state MUST use `{ "$state": "/path" }` syntax. Example: `mode: { "$state": "/mode" }`. Hardcoding `mode: "daily"` will not react to the user\'s tab choice.',
+  );
+  lines.push('');
 
   lines.push(
     ...modeSection(

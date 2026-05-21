@@ -16,10 +16,10 @@
 
 import type { Spec, VisibilityCondition } from '@json-render/core';
 import type { ComponentFn, ComponentRegistry, EventHandle } from '@json-render/react';
-import { defineRegistry, useActions, useIsVisible } from '@json-render/react';
+import { defineRegistry, useActions, useIsVisible, useStateStore } from '@json-render/react';
 import { AlertCircleIcon, AlertTriangleIcon, CheckCircle2Icon, InfoIcon } from 'lucide-react';
 import NextImage from 'next/image';
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import {
   AccordionContent,
   AccordionItem,
@@ -62,6 +62,18 @@ interface SpecContextValue {
 }
 
 export const SpecContext = createContext<SpecContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// FormContext — propagates the enclosing Form's `name` to child field
+// components (Input, Select, Checkbox) so they can auto-bind to
+// /{formName}/{fieldName} in the shared StateStore.
+// ---------------------------------------------------------------------------
+
+type FormContextValue = { name: string };
+const FormContext = createContext<FormContextValue | null>(null);
+export function useFormContext(): FormContextValue | null {
+  return useContext(FormContext);
+}
 
 /**
  * Returns true when an element has at least one event binding whose action
@@ -309,6 +321,29 @@ const calloutIconMap: Record<CalloutTone, React.ReactNode> = {
 };
 
 // ---------------------------------------------------------------------------
+// Dynamic prop helpers
+//
+// Catalog props like `text`, `label`, etc. now accept `string | { $state: string }`
+// so the model can wire them to live state. At runtime, json-render's
+// `resolveElementProps` resolves all `{ $state }` refs to their current values
+// before the component function is called — the component always receives a
+// resolved string/boolean/etc. at runtime.
+//
+// The TypeScript types on the component's `props` argument reflect the Zod
+// schema (i.e. `string | { $state: string }`), which React JSX rejects for
+// children and prop slots that expect `string`. These helpers are typed casts
+// only — they do no runtime work. The only unsafe scenario (wrong resolved type)
+// surfaces as a React render warning, not a crash.
+// ---------------------------------------------------------------------------
+
+/** Cast a dynamic string prop to `string` for JSX. */
+const ds = (v: string | { $state: string } | undefined): string =>
+  v as unknown as string;
+/** Cast a dynamic boolean prop to `boolean | undefined` for JSX. */
+const db = (v: boolean | { $state: string } | undefined): boolean | undefined =>
+  v as unknown as boolean | undefined;
+
+// ---------------------------------------------------------------------------
 // Registry via defineRegistry
 // ---------------------------------------------------------------------------
 
@@ -319,11 +354,11 @@ export const { registry } = defineRegistry(catalog, {
       <UiCard>
         {props.title && (
           <CardHeader>
-            <CardTitle>{props.title}</CardTitle>
+            <CardTitle>{ds(props.title)}</CardTitle>
           </CardHeader>
         )}
         <CardContent>{children}</CardContent>
-        {props.footer && <CardFooter>{props.footer}</CardFooter>}
+        {props.footer && <CardFooter>{ds(props.footer)}</CardFooter>}
       </UiCard>
     )) satisfies ComponentFn<typeof catalog, 'Card'>,
 
@@ -336,12 +371,12 @@ export const { registry } = defineRegistry(catalog, {
         3: 'text-lg font-semibold',
         4: 'text-base font-medium',
       } as const;
-      return <Tag className={sizeMap[props.level]}>{props.text}</Tag>;
+      return <Tag className={sizeMap[props.level]}>{ds(props.text)}</Tag>;
     }) satisfies ComponentFn<typeof catalog, 'Heading'>,
 
     // ---- Text ---------------------------------------------------------------
     Text: (({ props }) => (
-      <p className={props.muted ? 'text-muted-foreground text-sm' : 'text-sm'}>{props.text}</p>
+      <p className={db(props.muted) ? 'text-muted-foreground text-sm' : 'text-sm'}>{ds(props.text)}</p>
     )) satisfies ComponentFn<typeof catalog, 'Text'>,
 
     // ---- Image --------------------------------------------------------------
@@ -349,14 +384,14 @@ export const { registry } = defineRegistry(catalog, {
       <figure className="space-y-1">
         <NextImage
           src={props.src}
-          alt={props.alt}
+          alt={ds(props.alt)}
           width={800}
           height={450}
           className="w-full rounded-md object-cover"
           unoptimized
         />
         {props.caption && (
-          <figcaption className="text-xs text-muted-foreground">{props.caption}</figcaption>
+          <figcaption className="text-xs text-muted-foreground">{ds(props.caption)}</figcaption>
         )}
       </figure>
     )) satisfies ComponentFn<typeof catalog, 'Image'>,
@@ -369,7 +404,7 @@ export const { registry } = defineRegistry(catalog, {
         rel="noopener noreferrer"
         className="text-primary underline underline-offset-4 hover:opacity-80"
       >
-        {props.text}
+        {ds(props.text)}
       </a>
     )) satisfies ComponentFn<typeof catalog, 'Link'>,
 
@@ -388,22 +423,22 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <UiButton
           variant={variant}
-          disabled={props.disabled ?? false}
+          disabled={db(props.disabled) ?? false}
           onClick={() => emit('press')}
         >
-          {props.label}
+          {ds(props.label)}
         </UiButton>
       );
     }) satisfies ComponentFn<typeof catalog, 'Button'>,
 
     // ---- List ---------------------------------------------------------------
     List: (({ props }) => {
-      const Tag = props.ordered ? 'ol' : 'ul';
+      const Tag = db(props.ordered) ? 'ol' : 'ul';
       return (
-        <Tag className={props.ordered ? 'list-decimal pl-5 space-y-1' : 'list-disc pl-5 space-y-1'}>
+        <Tag className={db(props.ordered) ? 'list-decimal pl-5 space-y-1' : 'list-disc pl-5 space-y-1'}>
           {props.items.map((item, i) => (
             <li key={i} className="text-sm">
-              {item}
+              {ds(item)}
             </li>
           ))}
         </Tag>
@@ -411,68 +446,167 @@ export const { registry } = defineRegistry(catalog, {
     }) satisfies ComponentFn<typeof catalog, 'List'>,
 
     // ---- Input --------------------------------------------------------------
-    Input: (({ props }) => (
-      <div className="space-y-1">
-        {props.label && (
-          <label htmlFor={props.name} className="text-sm font-medium">
-            {props.label}
-          </label>
-        )}
-        <UiInput
-          id={props.name}
-          name={props.name}
-          type={props.kind ?? 'text'}
-          placeholder={props.placeholder}
-        />
-      </div>
-    )) satisfies ComponentFn<typeof catalog, 'Input'>,
+    // When rendered inside a Form, auto-binds to /{formName}/{fieldName} in
+    // the shared StateStore via FormContext. Falls back to uncontrolled if no
+    // FormContext is present (e.g. a standalone Input outside a Form).
+    Input: (({ props }) => {
+      const formCtx = useFormContext();
+      const store = useStateStore();
+      const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      // Seed the store on mount if the path has no value yet.
+      // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath change matters
+      useEffect(() => {
+        if (statePath && store.get(statePath) === undefined) {
+          store.set(statePath, '');
+        }
+      }, [statePath]);
+      if (!formCtx && process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[json-render] Input "${props.name}" rendered outside a Form — not bound to store`,
+        );
+      }
+      const value = statePath ? ((store.get(statePath) as string | undefined) ?? '') : undefined;
+      return (
+        <div className="space-y-1">
+          {props.label && (
+            <label htmlFor={props.name} className="text-sm font-medium">
+              {ds(props.label)}
+            </label>
+          )}
+          <UiInput
+            id={props.name}
+            name={props.name}
+            type={props.kind ?? 'text'}
+            placeholder={ds(props.placeholder)}
+            disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            {...(statePath
+              ? {
+                  value,
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                    store.set(statePath, e.target.value),
+                }
+              : {})}
+          />
+        </div>
+      );
+    }) satisfies ComponentFn<typeof catalog, 'Input'>,
 
     // ---- Select -------------------------------------------------------------
-    Select: (({ props }) => (
-      <div className="space-y-1">
-        {props.label && <span className="text-sm font-medium">{props.label}</span>}
-        <Select name={props.name}>
-          <SelectTrigger className="w-full" aria-label={props.label}>
-            <SelectValue placeholder="Select…" />
-          </SelectTrigger>
-          <SelectContent>
-            {props.options.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    )) satisfies ComponentFn<typeof catalog, 'Select'>,
+    // When inside a Form, auto-binds to /{formName}/{fieldName} in the store.
+    Select: (({ props }) => {
+      const formCtx = useFormContext();
+      const store = useStateStore();
+      const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      const defaultSelectValue = ds(props.options[0]?.value);
+      // Seed the store on mount if the path has no value yet.
+      // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath matters
+      useEffect(() => {
+        if (statePath && store.get(statePath) === undefined) {
+          store.set(statePath, defaultSelectValue ?? '');
+        }
+      }, [statePath]);
+      if (!formCtx && process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[json-render] Select "${props.name}" rendered outside a Form — not bound to store`,
+        );
+      }
+      const storeValue = statePath ? (store.get(statePath) as string | undefined) : undefined;
+      const selectValue = storeValue ?? defaultSelectValue ?? '';
+      return (
+        <div className="space-y-1">
+          {props.label && <span className="text-sm font-medium">{ds(props.label)}</span>}
+          <Select
+            name={props.name}
+            disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            value={statePath ? selectValue : undefined}
+            onValueChange={statePath ? (v) => store.set(statePath, v) : undefined}
+          >
+            <SelectTrigger className="w-full" aria-label={ds(props.label)}>
+              <SelectValue placeholder="Select…" />
+            </SelectTrigger>
+            <SelectContent>
+              {props.options.map((opt) => (
+                <SelectItem key={ds(opt.value)} value={ds(opt.value)}>
+                  {ds(opt.label)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+    }) satisfies ComponentFn<typeof catalog, 'Select'>,
 
     // ---- Checkbox (using Switch as stand-in — no checkbox.tsx in base-nova) -
-    Checkbox: (({ props }) => (
-      <div className="flex items-center gap-2">
-        <Switch id={props.name} name={props.name} />
-        <label htmlFor={props.name} className="text-sm font-medium cursor-pointer">
-          {props.label}
-        </label>
-      </div>
-    )) satisfies ComponentFn<typeof catalog, 'Checkbox'>,
+    // When inside a Form, auto-binds to /{formName}/{fieldName} as a boolean.
+    Checkbox: (({ props }) => {
+      const formCtx = useFormContext();
+      const store = useStateStore();
+      const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      // Seed the store on mount if the path has no value yet.
+      // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath matters
+      useEffect(() => {
+        if (statePath && store.get(statePath) === undefined) {
+          store.set(statePath, false);
+        }
+      }, [statePath]);
+      if (!formCtx && process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[json-render] Checkbox "${props.name}" rendered outside a Form — not bound to store`,
+        );
+      }
+      const checked = statePath
+        ? ((store.get(statePath) as boolean | undefined) ?? false)
+        : undefined;
+      return (
+        <div className="flex items-center gap-2">
+          <Switch
+            id={props.name}
+            name={props.name}
+            disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            {...(statePath
+              ? {
+                  checked,
+                  onCheckedChange: (v: boolean) => store.set(statePath, v),
+                }
+              : {})}
+          />
+          <label htmlFor={props.name} className="text-sm font-medium cursor-pointer">
+            {ds(props.label)}
+          </label>
+        </div>
+      );
+    }) satisfies ComponentFn<typeof catalog, 'Checkbox'>,
 
     // ---- Form ---------------------------------------------------------------
+    // Wraps children in FormContext.Provider so child Input/Select/Checkbox
+    // components can discover the form name and auto-bind to state paths.
     Form: (({ props, children }) => (
-      <form name={props.name} onSubmit={(e) => e.preventDefault()} className="space-y-3">
-        {children}
-      </form>
+      <FormContext.Provider value={{ name: props.name }}>
+        <form name={props.name} onSubmit={(e) => e.preventDefault()} className="space-y-3">
+          {children}
+        </form>
+      </FormContext.Provider>
     )) satisfies ComponentFn<typeof catalog, 'Form'>,
 
     // ---- Tabs ---------------------------------------------------------------
     Tabs: (({ props }) => {
       const ctx = useSpecContext();
+      const store = useStateStore();
       const defaultTab = props.tabs[0]?.id ?? '';
+      const valueStatePath = props.valueStatePath as string | undefined;
+      const controlledValue = valueStatePath
+        ? ((store.get(valueStatePath) as string | undefined) ?? defaultTab)
+        : undefined;
       return (
-        <UiTabs defaultValue={defaultTab}>
+        <UiTabs
+          defaultValue={valueStatePath ? undefined : defaultTab}
+          value={controlledValue}
+          onValueChange={valueStatePath ? (v) => store.set(valueStatePath, v) : undefined}
+        >
           <TabsList>
             {props.tabs.map((tab) => (
               <TabsTrigger key={tab.id} value={tab.id}>
-                {tab.label}
+                {ds(tab.label)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -493,7 +627,7 @@ export const { registry } = defineRegistry(catalog, {
         <UiAccordion multiple defaultValue={firstId ? [firstId] : []}>
           {props.items.map((item) => (
             <AccordionItem key={item.id} value={item.id}>
-              <AccordionTrigger>{item.label}</AccordionTrigger>
+              <AccordionTrigger>{ds(item.label)}</AccordionTrigger>
               <AccordionContent>{ctx ? ctx.renderChildren(item.children) : null}</AccordionContent>
             </AccordionItem>
           ))}
@@ -507,8 +641,8 @@ export const { registry } = defineRegistry(catalog, {
       return (
         <Alert variant={variant}>
           {calloutIconMap[props.tone]}
-          {props.title && <AlertTitle>{props.title}</AlertTitle>}
-          <AlertDescription>{props.text}</AlertDescription>
+          {props.title && <AlertTitle>{ds(props.title)}</AlertTitle>}
+          <AlertDescription>{ds(props.text)}</AlertDescription>
         </Alert>
       );
     }) satisfies ComponentFn<typeof catalog, 'Callout'>,
@@ -516,7 +650,7 @@ export const { registry } = defineRegistry(catalog, {
     // ---- Badge --------------------------------------------------------------
     Badge: (({ props }) => {
       const variant = props.tone ? badgeToneMap[props.tone] : 'default';
-      return <UiBadge variant={variant}>{props.label}</UiBadge>;
+      return <UiBadge variant={variant}>{ds(props.label)}</UiBadge>;
     }) satisfies ComponentFn<typeof catalog, 'Badge'>,
 
     // ---- Divider ------------------------------------------------------------

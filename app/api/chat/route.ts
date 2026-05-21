@@ -14,6 +14,7 @@ import { renderUI } from '@/lib/ai/tools/render-ui';
 import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
+import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
   addUsageToSession,
   appendMessages,
@@ -88,14 +89,25 @@ export async function POST(req: Request) {
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
         tools: { webSearch, renderUI },
-        // Enforce one renderUI call per turn: once the tool has fired, strip it from subsequent
-        // steps so the model cannot re-render mid-turn. webSearch remains available throughout.
+        // Tool gating across step chain:
+        //   - "Rendered" = a renderUI tool call that produced an OUTPUT, not just
+        //     a call attempt. Failed validation lands in toolCalls but not in
+        //     toolResults; counting calls let the model trip the "rendered" gate
+        //     by emitting an invalid spec, after which webSearch unlocked.
+        //   - For UI-intent prompts: keep activeTools locked to [renderUI] until
+        //     renderUI succeeds. After success: strip renderUI so the model
+        //     cannot re-render mid-turn (one render per turn), leaving webSearch
+        //     for follow-ups. This forces the model to fix a broken spec rather
+        //     than bail to webSearch.
         prepareStep: ({ steps }) => {
-          const alreadyRendered = steps.some((s) =>
-            s.toolCalls.some((c) => c.toolName === 'renderUI'),
+          const renderedSuccessfully = steps.some((s) =>
+            s.toolResults.some((r) => r.toolName === 'renderUI'),
           );
-          if (alreadyRendered) {
+          if (renderedSuccessfully) {
             return { activeTools: ['webSearch'] as const };
+          }
+          if (hasUIRenderIntent(windowed)) {
+            return { activeTools: ['renderUI'] as const };
           }
           return undefined;
         },

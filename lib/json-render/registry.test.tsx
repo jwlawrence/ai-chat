@@ -8,9 +8,9 @@
  * Tabs / Accordion can find their nested children via SpecContext.
  */
 
-import type { Spec } from '@json-render/core';
+import { createStateStore, type Spec } from '@json-render/core';
 import { JSONUIProvider, Renderer } from '@json-render/react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { registry, SpecRenderer } from '@/lib/json-render/registry';
@@ -18,12 +18,16 @@ import { registry, SpecRenderer } from '@/lib/json-render/registry';
 afterEach(cleanup);
 
 // ---------------------------------------------------------------------------
-// Helper: render a spec wrapped in all required providers
+// Helper: render a spec wrapped in all required providers.
+// Mirrors production (RenderUICard) by passing a controlled store rather than
+// the uncontrolled initialState prop — this catches binding bugs that only
+// surface under controlled-mode state propagation.
 // ---------------------------------------------------------------------------
 
 function renderSpec(spec: Spec) {
+  const store = createStateStore((spec.state as Record<string, unknown> | undefined) ?? {});
   return render(
-    <JSONUIProvider registry={registry}>
+    <JSONUIProvider registry={registry} store={store}>
       <SpecRenderer spec={spec} registry={registry}>
         <Renderer spec={spec} registry={registry} />
       </SpecRenderer>
@@ -266,6 +270,53 @@ describe('registry — form primitives', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tabs controlled binding via valueStatePath
+// ---------------------------------------------------------------------------
+
+describe('registry — Tabs controlled binding (valueStatePath)', () => {
+  it('shows initial tab content based on initial state and updates on tab click', () => {
+    const spec: Spec = {
+      root: 'tabs-root',
+      state: { mode: 'daily' },
+      elements: {
+        'tabs-root': {
+          type: 'Card',
+          props: {},
+          children: ['mode-tabs', 'mode-display'],
+        },
+        'mode-tabs': {
+          type: 'Tabs',
+          props: {
+            valueStatePath: '/mode',
+            tabs: [
+              { id: 'daily', label: 'Today', children: [] },
+              { id: 'weekly', label: '7-Day', children: [] },
+            ],
+          },
+          children: [],
+        },
+        'mode-display': {
+          type: 'Text',
+          props: { text: { $state: '/mode' } },
+          children: [],
+        },
+      },
+    };
+
+    renderSpec(spec);
+
+    // Initial state: mode is "daily" → Text shows "daily"
+    expect(screen.getByText('daily')).toBeInTheDocument();
+
+    // Click the "7-Day" tab
+    fireEvent.click(screen.getByRole('tab', { name: '7-Day' }));
+
+    // After click: state path /mode updated to "weekly" → Text shows "weekly"
+    expect(screen.getByText('weekly')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Fix #8: Cycle guard in renderChildren
 // ---------------------------------------------------------------------------
 
@@ -375,6 +426,127 @@ describe('registry — Fix #9: visibility check in Tabs nested children', () => 
     // No initialState — /open is undefined → falsy → element hidden.
     renderSpec(spec);
     expect(screen.queryByText('State-conditional text')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5: Form auto-binding — Input/Select/Checkbox bind to store paths
+// ---------------------------------------------------------------------------
+
+describe('registry — Phase 5: form auto-binding', () => {
+  it('renders Input with seeded value from store when inside a Form', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      state: { signup: { email: 'hello@a.com' } },
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'signup' },
+          children: ['email-input'],
+        },
+        'email-input': {
+          type: 'Input',
+          props: { name: 'email', label: 'Email address', kind: 'email' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore((spec.state as Record<string, unknown>) ?? {});
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    const input = screen.getByLabelText('Email address') as HTMLInputElement;
+    expect(input.value).toBe('hello@a.com');
+  });
+
+  it('updates store on Input change', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      state: { signup: { email: 'old@a.com' } },
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'signup' },
+          children: ['email-input'],
+        },
+        'email-input': {
+          type: 'Input',
+          props: { name: 'email', label: 'Email address' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore((spec.state as Record<string, unknown>) ?? {});
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    const input = screen.getByLabelText('Email address') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'new@b.com' } });
+    expect(store.get('/signup/email')).toBe('new@b.com');
+  });
+
+  it('renders Checkbox with seeded checked state from store', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      state: { prefs: { email: 'default', subscribe: true } },
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'prefs' },
+          children: ['subscribe-check'],
+        },
+        'subscribe-check': {
+          type: 'Checkbox',
+          props: { name: 'subscribe', label: 'Subscribe' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore((spec.state as Record<string, unknown>) ?? {});
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    const switchEl = screen.getByRole('switch') as HTMLButtonElement;
+    expect(switchEl).toHaveAttribute('data-checked', '');
+  });
+
+  it('seeds Input store path with empty string when no initial value provided', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'reg' },
+          children: ['name-input'],
+        },
+        'name-input': {
+          type: 'Input',
+          props: { name: 'username', label: 'Username' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore({});
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    expect(store.get('/reg/username')).toBe('');
   });
 });
 

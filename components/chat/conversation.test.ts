@@ -223,3 +223,54 @@ describe('lockedRoots derivation — Fix #3 + Fix #12', () => {
     expect(deriveLockedRoots(messages).has('card-y')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 5: submitForm chip lock behaviour
+//
+// submitForm chips use mode: 'model' so they should lock the originating card
+// on reload — same as sendToModel chips.
+// ---------------------------------------------------------------------------
+
+describe('lockedRoots — Phase 5: submitForm chips lock cards', () => {
+  function makeSubmitMsg(sourceRootId: string): UIMessage {
+    return makeMessage(
+      [
+        {
+          type: 'data-press',
+          data: {
+            action: 'submitForm',
+            label: 'Submitted contact',
+            data: { email: 'a@b.com' },
+            sourceRootId,
+            mode: 'model',
+          } satisfies PressData,
+        } as unknown as UIMessage['parts'][number],
+        { type: 'text', text: '[Submitted form contact: {"email":"a@b.com"}]' },
+      ] as UIMessage['parts'],
+      'user',
+    );
+  }
+
+  it('adds root id when submitForm chip has mode: "model"', () => {
+    const messages: UIMessage[] = [makeSubmitMsg('form-card-1')];
+    expect(deriveLockedRoots(messages).has('form-card-1')).toBe(true);
+  });
+
+  it('does not add root id for a submitForm chip without sourceRootId', () => {
+    const m = makeMessage(
+      [
+        {
+          type: 'data-press',
+          data: {
+            action: 'submitForm',
+            label: 'Submitted',
+            mode: 'model',
+            // no sourceRootId
+          } satisfies PressData,
+        } as unknown as UIMessage['parts'][number],
+      ] as UIMessage['parts'],
+      'user',
+    );
+    expect(deriveLockedRoots([m]).size).toBe(0);
+  });
+});
