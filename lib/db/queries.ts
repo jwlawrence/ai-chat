@@ -62,10 +62,17 @@ export async function appendMessages(
   toInsert: Array<Pick<UIMessage, 'role' | 'parts'>>,
 ): Promise<void> {
   if (toInsert.length === 0) return;
-  const rows: NewDbMessage[] = toInsert.map((m) => ({
+  // Stamp each row with a distinct createdAt offset by its array index.
+  // Postgres's defaultNow() evaluates once per statement, so a batch insert
+  // would otherwise give every row the same timestamp — and getMessages'
+  // ORDER BY created_at ASC would then return user/assistant pairs in an
+  // arbitrary (often reversed) order on reload.
+  const baseTime = Date.now();
+  const rows: NewDbMessage[] = toInsert.map((m, i) => ({
     sessionId,
     role: m.role,
     parts: m.parts as unknown as NewDbMessage['parts'],
+    createdAt: new Date(baseTime + i),
   }));
   await db.insert(messages).values(rows);
 }
