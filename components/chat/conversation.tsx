@@ -16,7 +16,7 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
 import { specSchema } from '@/lib/ai/tools/render-ui';
-import { registry, SpecRenderer } from '@/lib/json-render/registry';
+import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
 
 /**
  * Returns true when a message has at least one tool-renderUI part in any state.
@@ -141,10 +141,15 @@ function RenderUICard({
     setIsLocked(true);
   };
 
+  // Preprocess the spec to inject disabled:true into model-mode Buttons when
+  // locked. Both Renderer and SpecRenderer.renderChildren consume effectiveSpec
+  // so top-level and Tabs/Accordion-nested buttons both reflect the lock.
+  const effectiveSpec = useMemo(() => applyLockToSpec(spec, isLocked), [spec, isLocked]);
+
   return (
     <JSONUIProvider registry={registry} initialState={initialState} handlers={handlers}>
-      <SpecRenderer spec={spec} registry={registry} isLocked={isLocked} lock={lock}>
-        <Renderer spec={spec} registry={registry} />
+      <SpecRenderer spec={effectiveSpec} registry={registry} isLocked={isLocked} lock={lock}>
+        <Renderer spec={effectiveSpec} registry={registry} />
       </SpecRenderer>
     </JSONUIProvider>
   );

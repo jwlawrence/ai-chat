@@ -20,7 +20,7 @@ import { JSONUIProvider, Renderer } from '@json-render/react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { registry, SpecRenderer } from '@/lib/json-render/registry';
+import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
 
 afterEach(cleanup);
 
@@ -473,5 +473,79 @@ describe('local-mode actions — repeated presses', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Show' }));
     });
     expect(screen.getByText('Toggle panel')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3: applyLockToSpec + rendered lock state
+// ---------------------------------------------------------------------------
+
+describe('Phase 3: applyLockToSpec + model-mode lock display', () => {
+  const reviewSpec: Spec = {
+    root: 'card',
+    elements: {
+      card: { type: 'Card', props: {}, children: ['approve', 'reject'] },
+      approve: {
+        type: 'Button',
+        props: { label: 'Approve' },
+        on: { press: { action: 'sendToModel', params: { label: 'Approve' } } },
+        children: [],
+      },
+      reject: {
+        type: 'Button',
+        props: { label: 'Reject' },
+        on: { press: { action: 'sendToModel', params: { label: 'Reject' } } },
+        children: [],
+      },
+    },
+  };
+
+  it('returns the spec unchanged when isLocked is false', () => {
+    const result = applyLockToSpec(reviewSpec, false);
+    expect(result).toBe(reviewSpec); // strict equality — no allocation
+  });
+
+  it('injects disabled:true into every model-mode Button when isLocked is true', () => {
+    const result = applyLockToSpec(reviewSpec, true);
+    expect((result.elements.approve.props as { disabled?: boolean }).disabled).toBe(true);
+    expect((result.elements.reject.props as { disabled?: boolean }).disabled).toBe(true);
+  });
+
+  it('does not modify local-mode Buttons (e.g. setState) when isLocked is true', () => {
+    const localSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['local-btn'] },
+        'local-btn': {
+          type: 'Button',
+          props: { label: 'Toggle' },
+          on: { press: { action: 'setState', params: { statePath: '/x', value: true } } },
+          children: [],
+        },
+      },
+    };
+    const result = applyLockToSpec(localSpec, true);
+    expect((result.elements['local-btn'].props as { disabled?: boolean }).disabled).toBeUndefined();
+  });
+
+  it('does not modify Buttons without an on.press binding', () => {
+    const noActionSpec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['plain-btn'] },
+        'plain-btn': { type: 'Button', props: { label: 'Just a button' }, children: [] },
+      },
+    };
+    const result = applyLockToSpec(noActionSpec, true);
+    expect(
+      (result.elements['plain-btn'].props as { disabled?: boolean }).disabled,
+    ).toBeUndefined();
+  });
+
+  it('renders model-mode Buttons as disabled when the locked spec is mounted', () => {
+    const locked = applyLockToSpec(reviewSpec, true);
+    renderSpec(locked);
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
   });
 });

@@ -72,6 +72,37 @@ interface SpecContextValue {
 export const SpecContext = createContext<SpecContextValue | null>(null);
 
 /**
+ * Returns a new spec where every Button whose press binding is a model-mode
+ * action has `disabled: true` injected into its props. When `isLocked` is
+ * false, returns the original spec unchanged (no allocation). Used by
+ * RenderUICard so both json-render's upstream Renderer and SpecRenderer's
+ * renderChildren see the same locked vs. unlocked spec — single source of
+ * truth, no per-component lock reads.
+ */
+export function applyLockToSpec(spec: Spec, isLocked: boolean): Spec {
+  if (!isLocked) return spec;
+  const newElements: Record<string, Spec['elements'][string]> = {};
+  for (const [key, el] of Object.entries(spec.elements)) {
+    const pressAction = (
+      el.on as { press?: { action?: string } } | undefined
+    )?.press?.action;
+    if (
+      el.type === 'Button' &&
+      pressAction !== undefined &&
+      resolveActionMode(pressAction) === 'model'
+    ) {
+      newElements[key] = {
+        ...el,
+        props: { ...(el.props as Record<string, unknown>), disabled: true },
+      };
+    } else {
+      newElements[key] = el;
+    }
+  }
+  return { ...spec, elements: newElements };
+}
+
+/**
  * Wrap `<Renderer>` with this provider so that Tabs / Accordion can render
  * their prop-level children.
  *
@@ -138,18 +169,6 @@ export function SpecRenderer({
           | Record<string, { action: string; params?: Record<string, unknown> }>
           | undefined;
 
-        // Model-mode lock: if the card is locked AND this element is a Button
-        // with a model-mode press binding, inject `disabled: true` into its props
-        // so the Button component renders in a greyed-out state without needing
-        // any special logic inside the ComponentFn. Local-mode buttons are
-        // unaffected because resolveActionMode('setState') === 'local'.
-        const pressAction = onBindings?.press?.action;
-        const effectiveEl =
-          isLocked && el.type === 'Button' && pressAction !== undefined &&
-          resolveActionMode(pressAction) === 'model'
-            ? { ...el, props: { ...(el.props as Record<string, unknown>), disabled: true } }
-            : el;
-
         // Fix #12: Derive emit from on so there is a single dispatch path.
         const on = (eventName: string): EventHandle => {
           const binding = onBindings?.[eventName];
@@ -169,17 +188,21 @@ export function SpecRenderer({
         // visibility check (Fix #9). We build the node unconditionally and wrap
         // it in VisibleChild so useIsVisible is called inside a proper React
         // component (hooks-rules compliant).
+        // Model-mode lock display is handled inside the Button component itself
+        // (it reads isLocked from SpecContext), so this branch doesn't need to
+        // inject `disabled: true` — same lock applies to top-level and nested
+        // buttons through one source of truth.
         const node = (
-          <Comp key={key} element={effectiveEl} emit={emit} on={on} loading={false}>
+          <Comp key={key} element={el} emit={emit} on={on} loading={false}>
             {nested}
           </Comp>
         );
 
-        if (effectiveEl.visible !== undefined) {
+        if (el.visible !== undefined) {
           return (
             <VisibleChild
               key={key}
-              condition={effectiveEl.visible as VisibilityCondition | undefined}
+              condition={el.visible as VisibilityCondition | undefined}
               node={node}
             />
           );
@@ -188,7 +211,7 @@ export function SpecRenderer({
         return node;
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [spec, reg, execute, isLocked],
+    [spec, reg, execute],
   );
 
   return (
@@ -337,10 +360,11 @@ export const { registry } = defineRegistry(catalog, {
     // is required. Repeated presses keep working because local-mode never locks
     // the card.
     //
-    // Model-mode lock: SpecRenderer.renderChildren injects `disabled: true` into
-    // the props of any Button whose press action is model-mode when the card is
-    // locked. This happens before the ComponentFn is called, so the Button just
-    // reads `props.disabled` as usual — no special lock logic needed here.
+    // Model-mode lock: when the card is locked, RenderUICard / SpecRenderer
+    // preprocess the spec via `applyLockToSpec` to inject `disabled: true` into
+    // every Button whose press binding is model-mode. By the time this
+    // ComponentFn runs, `props.disabled` is already correct — so this code path
+    // is unchanged regardless of lock state.
     Button: (({ props, emit }) => {
       const variant = props.variant ? buttonVariantMap[props.variant] : buttonVariantMap.primary;
       return (
