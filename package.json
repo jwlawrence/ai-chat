@@ -13,7 +13,9 @@
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@ai-sdk/azure": "^3.0.64",
@@ -58,6 +60,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
+    "@storybook/addon-docs": "^10.4.1",
+    "@storybook/addon-themes": "^10.4.1",
+    "@storybook/nextjs-vite": "^10.4.1",
     "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -69,8 +74,10 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "jsdom": "^29.1.1",
+    "storybook": "^10.4.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
+    "vite": "^8.0.14",
     "vitest": "^4.1.6"
   }
 }

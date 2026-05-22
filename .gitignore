@@ -43,3 +43,6 @@ next-env.d.ts
 # Claude Code internal state
 .claude/
 .env*.local
+
+*storybook.log
+storybook-static

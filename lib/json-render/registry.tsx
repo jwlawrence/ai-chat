@@ -345,6 +345,9 @@ const db = (v: boolean | { $state: string } | undefined): boolean | undefined =>
 export const { registry } = defineRegistry(catalog, {
   components: {
     // ---- Card ---------------------------------------------------------------
+    // space-y-3 on CardContent gives adjacent body elements (Heading + Text +
+    // Badge + Callout + ...) vertical rhythm. Without it the renderer drops
+    // every child flush against the next.
     Card: (({ props, children }) => (
       <UiCard className="bg-card/80 border border-border">
         {props.title && (
@@ -352,7 +355,7 @@ export const { registry } = defineRegistry(catalog, {
             <CardTitle>{ds(props.title)}</CardTitle>
           </CardHeader>
         )}
-        <CardContent>{children}</CardContent>
+        <CardContent className="space-y-3">{children}</CardContent>
         {props.footer && <CardFooter>{ds(props.footer)}</CardFooter>}
       </UiCard>
     )) satisfies ComponentFn<typeof catalog, 'Card'>,

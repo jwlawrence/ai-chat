@@ -1,0 +1,23 @@
+<!--
+  Storybook cannot use the `geist` package (it imports `next/font/local`, a
+  Next-only SWC transform). Instead, load Geist + Geist Mono from Google Fonts
+  and set the same CSS variables that `app/globals.css` expects — so
+  `--font-sans` / `--font-mono` (and Tailwind's `font-sans` / `font-mono`
+  utilities) resolve correctly inside Storybook.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
+/>
+<style>
+  :root {
+    --font-geist-sans: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  /* Apply directly so all story content inherits, not just elements with `font-sans`. */
+  body {
+    font-family: var(--font-sans, var(--font-geist-sans));
+  }
+</style>

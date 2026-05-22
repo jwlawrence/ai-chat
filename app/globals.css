@@ -3,6 +3,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Map shorthand data-horizontal / data-vertical variants onto base-ui's
+ * actual attribute (`data-orientation="horizontal" | "vertical"`). Without
+ * this, classes like `data-horizontal:flex-col` in components/ui/tabs.tsx
+ * never match and Tabs render with the default `flex-row`, putting the tab
+ * strip and panel side-by-side instead of stacked.
+ */
+@custom-variant data-horizontal (&[data-orientation="horizontal"], :where([data-orientation="horizontal"]) &);
+@custom-variant data-vertical (&[data-orientation="vertical"], :where([data-orientation="vertical"]) &);
+
 @theme {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
