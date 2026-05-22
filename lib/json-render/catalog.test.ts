@@ -258,13 +258,14 @@ describe('catalogPrompt', () => {
     }
   });
 
-  it('catalogPrompt fits within ~20 KB', () => {
+  it('catalogPrompt fits within the expected size envelope', () => {
     // catalogPrompt is appended to the renderUI tool description on every chat
     // turn. Phase 1 produced ~3.6 KB; Phase 2 added local-action docs (~8 KB);
     // Phase 3 added model-mode docs (~10 KB); Phase 4 added endpoint section
-    // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB).
-    // The bound is set to ~1.2x the current size to catch accidental regressions.
-    expect(catalogPrompt.length).toBeLessThan(20_000);
+    // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB);
+    // Phase 6 added annotated-list pattern (~20.3 KB actual).
+    // Bound = actual (~20_325) + 2_000 so a silent doubling would trip this guard.
+    expect(catalogPrompt.length).toBeLessThan(22_500);
   });
 });
 
@@ -326,8 +327,8 @@ describe('ACTION_REGISTRY + resolveActionMode — Phase 4: refreshData', () => {
     expect(catalogPrompt).toContain('refreshData');
   });
 
-  it('catalogPrompt still fits within ~20 KB after Phase 4 endpoint section', () => {
-    expect(catalogPrompt.length).toBeLessThan(20_000);
+  it('catalogPrompt still fits within the expected size envelope after Phase 4 endpoint section', () => {
+    expect(catalogPrompt.length).toBeLessThan(22_500);
   });
 });
 
@@ -447,10 +448,8 @@ describe('catalogPrompt — Phase 4.1 keywords', () => {
     expect(catalogPrompt).toContain('fetchWeather');
   });
 
-  it('catalogPrompt still fits within ~20 KB after Phase 4.1 additions', () => {
-    // Phase 4.1 adds dynamic-prop section + weather example (~4-5 KB).
-    // Previous bound was ~13 KB; new content is substantial. Set to ~20 KB.
-    expect(catalogPrompt.length).toBeLessThan(20_000);
+  it('catalogPrompt still fits within the expected size envelope after Phase 4.1 additions', () => {
+    expect(catalogPrompt.length).toBeLessThan(22_500);
   });
 
   it('mentions valueStatePath', () => {
@@ -564,6 +563,31 @@ describe('validateElementProps — nested $state refs must NOT be accepted (I1)'
   });
 });
 
+// ---------------------------------------------------------------------------
+// Phase 6 / B1: annotated-list composition pattern
+// ---------------------------------------------------------------------------
+
+describe('catalogPrompt — Phase 6/B1: annotated list pattern', () => {
+  it('contains an Annotated lists section', () => {
+    expect(catalogPrompt).toContain('Annotated lists');
+  });
+
+  it('teaches Badge+Text row composition instead of flat List + Badge', () => {
+    expect(catalogPrompt).toContain('Text');
+    expect(catalogPrompt).toContain('Badge');
+    // The pattern example uses 'row-1' as a text element alongside badge-1
+    expect(catalogPrompt).toContain('row-1');
+    expect(catalogPrompt).toContain('badge-1');
+  });
+
+  it('catalogPrompt size is within expected bound after Phase 6 additions', () => {
+    // Actual size after Phase 6 annotated-list addition: ~20_325 bytes.
+    // Bound = actual + 2_000 to catch accidental bloat.
+    expect(catalogPrompt.length).toBeGreaterThan(19_000);
+    expect(catalogPrompt.length).toBeLessThan(22_500);
+  });
+});
+
 describe('catalogPrompt — Phase 5: form submission section', () => {
   it('mentions submitForm', () => {
     expect(catalogPrompt).toContain('submitForm');
@@ -582,7 +606,7 @@ describe('catalogPrompt — Phase 5: form submission section', () => {
     expect(catalogPrompt).toContain('Form auto-binding handles it');
   });
 
-  it('catalogPrompt still fits within ~20 KB after Phase 5 additions', () => {
-    expect(catalogPrompt.length).toBeLessThan(20_000);
+  it('catalogPrompt still fits within the expected size envelope after Phase 5 additions', () => {
+    expect(catalogPrompt.length).toBeLessThan(22_500);
   });
 });

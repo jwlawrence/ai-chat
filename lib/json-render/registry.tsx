@@ -246,11 +246,7 @@ export function SpecRenderer({
     [spec, reg, execute],
   );
 
-  return (
-    <SpecContext.Provider value={{ spec, renderChildren }}>
-      {children}
-    </SpecContext.Provider>
-  );
+  return <SpecContext.Provider value={{ spec, renderChildren }}>{children}</SpecContext.Provider>;
 }
 
 /**
@@ -337,8 +333,7 @@ const calloutIconMap: Record<CalloutTone, React.ReactNode> = {
 // ---------------------------------------------------------------------------
 
 /** Cast a dynamic string prop to `string` for JSX. */
-const ds = (v: string | { $state: string } | undefined): string =>
-  v as unknown as string;
+const ds = (v: string | { $state: string } | undefined): string => v as unknown as string;
 /** Cast a dynamic boolean prop to `boolean | undefined` for JSX. */
 const db = (v: boolean | { $state: string } | undefined): boolean | undefined =>
   v as unknown as boolean | undefined;
@@ -351,7 +346,7 @@ export const { registry } = defineRegistry(catalog, {
   components: {
     // ---- Card ---------------------------------------------------------------
     Card: (({ props, children }) => (
-      <UiCard>
+      <UiCard className="bg-card/80 border border-border">
         {props.title && (
           <CardHeader>
             <CardTitle>{ds(props.title)}</CardTitle>
@@ -376,7 +371,9 @@ export const { registry } = defineRegistry(catalog, {
 
     // ---- Text ---------------------------------------------------------------
     Text: (({ props }) => (
-      <p className={db(props.muted) ? 'text-muted-foreground text-sm' : 'text-sm'}>{ds(props.text)}</p>
+      <p className={db(props.muted) ? 'text-muted-foreground text-sm' : 'text-sm'}>
+        {ds(props.text)}
+      </p>
     )) satisfies ComponentFn<typeof catalog, 'Text'>,
 
     // ---- Image --------------------------------------------------------------
@@ -387,7 +384,7 @@ export const { registry } = defineRegistry(catalog, {
           alt={ds(props.alt)}
           width={800}
           height={450}
-          className="w-full rounded-md object-cover"
+          className="w-full max-h-72 rounded-md object-cover"
           unoptimized
         />
         {props.caption && (
@@ -435,7 +432,9 @@ export const { registry } = defineRegistry(catalog, {
     List: (({ props }) => {
       const Tag = db(props.ordered) ? 'ol' : 'ul';
       return (
-        <Tag className={db(props.ordered) ? 'list-decimal pl-5 space-y-1' : 'list-disc pl-5 space-y-1'}>
+        <Tag
+          className={db(props.ordered) ? 'list-decimal pl-5 space-y-1' : 'list-disc pl-5 space-y-1'}
+        >
           {props.items.map((item, i) => (
             <li key={i} className="text-sm">
               {ds(item)}

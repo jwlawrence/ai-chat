@@ -6,7 +6,7 @@
 import type { UIMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
 import type { PressData } from './conversation';
-import { messageHasPressChip, messageHasRenderUI } from './conversation';
+import { messageHasPressChip, messageHasRenderUI, messageHasVisibleOutput } from './conversation';
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal UIMessage with the given parts
@@ -272,5 +272,56 @@ describe('lockedRoots — Phase 5: submitForm chips lock cards', () => {
       'user',
     );
     expect(deriveLockedRoots([m]).size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I4: messageHasVisibleOutput — spinner predicate
+// ---------------------------------------------------------------------------
+
+describe('messageHasVisibleOutput — I4', () => {
+  it('returns true for a text part with content', () => {
+    const m = makeMessage([{ type: 'text', text: 'Hello' }] as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(true);
+  });
+
+  it('returns false for a text part with empty text', () => {
+    const m = makeMessage([{ type: 'text', text: '' }] as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(false);
+  });
+
+  it('returns false for a tool-* part with state=input-streaming', () => {
+    const m = makeMessage([
+      { type: 'tool-renderUI', state: 'input-streaming', toolCallId: 'tc', input: {} },
+    ] as unknown as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(false);
+  });
+
+  it('returns false for a tool-* part with state=input-available', () => {
+    const m = makeMessage([
+      { type: 'tool-renderUI', state: 'input-available', toolCallId: 'tc', input: {} },
+    ] as unknown as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(false);
+  });
+
+  it('returns true for a tool-* part with state=output-available', () => {
+    const m = makeMessage([
+      { type: 'tool-renderUI', state: 'output-available', toolCallId: 'tc', input: {}, output: {} },
+    ] as unknown as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(true);
+  });
+
+  it('returns true for a tool-* part with state=output-error', () => {
+    const m = makeMessage([
+      { type: 'tool-renderUI', state: 'output-error', toolCallId: 'tc', input: {} },
+    ] as unknown as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(true);
+  });
+
+  it('returns false for a tool-* part with no state', () => {
+    const m = makeMessage([
+      { type: 'tool-renderUI', toolCallId: 'tc', input: {} },
+    ] as unknown as UIMessage['parts']);
+    expect(messageHasVisibleOutput(m)).toBe(false);
   });
 });

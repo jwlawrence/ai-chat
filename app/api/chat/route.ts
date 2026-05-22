@@ -10,9 +10,9 @@ import { z } from 'zod';
 import { DEFAULT_MODEL, isModelId, type ModelId } from '@/lib/ai/models';
 import { getModel } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
-import { renderUI } from '@/lib/ai/tools/render-ui';
-import { webSearch } from '@/lib/ai/tools/web-search';
 import { generateTitle } from '@/lib/ai/title';
+import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
+import { webSearch } from '@/lib/ai/tools/web-search';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
@@ -25,6 +25,7 @@ import {
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
+import { catalogPrompt } from '@/lib/json-render/catalog';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -36,6 +37,12 @@ const BodySchema = z.object({
 });
 
 const CONTEXT_WINDOW = Number.parseInt(process.env.CONTEXT_WINDOW_MESSAGES ?? '50', 10);
+
+const tools = { webSearch, renderUI };
+
+if (process.env.NODE_ENV !== 'production') {
+  console.log(`[chat] catalogPrompt ~${Math.ceil(catalogPrompt.length / 4)} tokens`);
+}
 
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json());
@@ -88,7 +95,7 @@ export async function POST(req: Request) {
         model: getModel(model),
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
-        tools: { webSearch, renderUI },
+        tools,
         // Tool gating across step chain:
         //   - "Rendered" = a renderUI tool call that produced an OUTPUT, not just
         //     a call attempt. Failed validation lands in toolCalls but not in
@@ -100,10 +107,7 @@ export async function POST(req: Request) {
         //     for follow-ups. This forces the model to fix a broken spec rather
         //     than bail to webSearch.
         prepareStep: ({ steps }) => {
-          const renderedSuccessfully = steps.some((s) =>
-            s.toolResults.some((r) => r.toolName === 'renderUI'),
-          );
-          if (renderedSuccessfully) {
+          if (hasRenderUIResult(steps)) {
             return { activeTools: ['webSearch'] as const };
           }
           if (hasUIRenderIntent(windowed)) {

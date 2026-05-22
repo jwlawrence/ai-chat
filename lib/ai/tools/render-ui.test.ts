@@ -1,7 +1,9 @@
 import type { UIMessage } from 'ai';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { webSearch } from '@/lib/ai/tools/web-search';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
-import { renderUI } from './render-ui';
+import { formatErrors, hasRenderUIResult, renderUI, summariseZodError } from './render-ui';
 
 // AI SDK tool() places execute at `.execute`. We call it directly as the SDK would.
 const execute = renderUI.execute as (spec: unknown) => Promise<unknown>;
@@ -273,7 +275,10 @@ describe('renderUI tool — Fix #18: setState requires statePath starting with "
 describe('renderUI tool — Fix #15: cap failures at 10', () => {
   it('shows exactly 10 bullet lines plus "...and 2 more." for 12 failures', async () => {
     // Build 12 elements all with an unknown component type so each contributes one failure.
-    const elements: Record<string, { type: string; props: Record<string, never>; children: never[] }> = {};
+    const elements: Record<
+      string,
+      { type: string; props: Record<string, never>; children: never[] }
+    > = {};
     for (let i = 1; i <= 12; i++) {
       elements[`el-${i}`] = { type: 'UnknownWidget', props: {}, children: [] };
     }
@@ -554,9 +559,7 @@ describe('renderUI tool — Tabs.valueStatePath validation', () => {
           type: 'Tabs',
           props: {
             valueStatePath: 'mode',
-            tabs: [
-              { id: 'daily', label: 'Today', children: [] },
-            ],
+            tabs: [{ id: 'daily', label: 'Today', children: [] }],
           },
           children: [],
         },
@@ -664,53 +667,255 @@ describe('prepareStep UI-intent path (logic unit test)', () => {
   });
 });
 
-describe('prepareStep already-rendered detection (logic unit test)', () => {
-  // Mirrors the predicate in app/api/chat/route.ts prepareStep callback.
-  // Production uses toolResults (not toolCalls) so that a failed validation
-  // attempt does not count as "rendered". Only a successful renderUI result
-  // (with an output) advances the gate.
-  function alreadyRendered(
-    steps: Array<{ toolResults: Array<{ toolName: string }> }>,
-  ): boolean {
-    return steps.some((s) => s.toolResults.some((r) => r.toolName === 'renderUI'));
-  }
+// ---------------------------------------------------------------------------
+// I3: Tool registry assertion — pin registered tools so adding a new tool
+// forces an explicit decision about prepareStep activeTools.
+// ---------------------------------------------------------------------------
 
-  it('returns false when no steps have a renderUI result', () => {
-    expect(alreadyRendered([])).toBe(false);
-    expect(alreadyRendered([{ toolResults: [{ toolName: 'webSearch' }] }])).toBe(false);
+describe('tool registry — I3: only webSearch and renderUI are registered', () => {
+  it('only webSearch and renderUI are registered — adding a tool requires updating prepareStep activeTools', () => {
+    const TOOLS = { webSearch, renderUI };
+    expect(Object.keys(TOOLS).sort()).toEqual(['renderUI', 'webSearch']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C2: hasRenderUIResult — shared exported helper
+// ---------------------------------------------------------------------------
+
+describe('hasRenderUIResult — C2: shared predicate', () => {
+  it('returns false when steps is empty', () => {
+    expect(hasRenderUIResult([])).toBe(false);
+  });
+
+  it('returns false when no step has a renderUI result', () => {
+    expect(hasRenderUIResult([{ toolResults: [{ toolName: 'webSearch' }] }])).toBe(false);
   });
 
   it('returns true when any step contains a renderUI result', () => {
-    expect(alreadyRendered([{ toolResults: [{ toolName: 'renderUI' }] }])).toBe(true);
-    expect(
-      alreadyRendered([
-        { toolResults: [{ toolName: 'webSearch' }] },
-        { toolResults: [{ toolName: 'renderUI' }] },
-      ]),
-    ).toBe(true);
+    expect(hasRenderUIResult([{ toolResults: [{ toolName: 'renderUI' }] }])).toBe(true);
   });
 
-  it('returns false when toolResults is empty on all steps', () => {
-    expect(alreadyRendered([{ toolResults: [] }, { toolResults: [] }])).toBe(false);
+  it('returns false when toolResults is empty (failed call, not a result)', () => {
+    expect(hasRenderUIResult([{ toolResults: [] }])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C3: formatErrors — pin output format
+// ---------------------------------------------------------------------------
+
+describe('formatErrors — C3: output format', () => {
+  it('formats a single failure with a bullet and fix instruction', () => {
+    const msg = formatErrors(['root "missing" is not a key in elements']);
+    expect(msg).toMatch(/^Spec validation failed:/);
+    expect(msg).toContain('- root "missing" is not a key in elements');
+    expect(msg).toContain('Fix these fields and re-emit the spec.');
   });
 
-  it('returns false when step has toolCalls with renderUI but toolResults is empty (bug-fix path)', () => {
-    // This is the key regression guard: a failed/invalid renderUI spec lands in
-    // toolCalls but NOT in toolResults. The gate must not fire in this case.
-    const stepsWithCallButNoResult = [
-      {
-        toolResults: [],
-        // toolCalls is not part of the type used by the predicate; its presence
-        // in the outer object is irrelevant to the result.
+  it('formats multiple failures as separate bullet lines', () => {
+    const msg = formatErrors(['failure one', 'failure two', 'failure three']);
+    const bullets = (msg.match(/^- /gm) ?? []).length;
+    expect(bullets).toBe(3);
+  });
+
+  it('caps at 10 bullets and appends "...and N more." for overflow', () => {
+    const failures = Array.from({ length: 13 }, (_, i) => `failure ${i + 1}`);
+    const msg = formatErrors(failures);
+    const bullets = (msg.match(/^- /gm) ?? []).length;
+    expect(bullets).toBe(10);
+    expect(msg).toContain('...and 3 more.');
+  });
+
+  it('does not append "...and N more." when exactly 10 failures', () => {
+    const failures = Array.from({ length: 10 }, (_, i) => `failure ${i + 1}`);
+    const msg = formatErrors(failures);
+    expect(msg).not.toContain('...and');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C4 / B3: summariseZodError — pin output format with suffix
+// ---------------------------------------------------------------------------
+
+describe('summariseZodError — C4/B3: output format', () => {
+  it('formats a single issue as "props.<path>: <message>"', () => {
+    const err = z.object({ level: z.literal(1) }).safeParse({ level: 5 });
+    if (err.success) throw new Error('Expected failure');
+    const summary = summariseZodError(err.error);
+    expect(summary).toContain('props.level');
+  });
+
+  it('joins multiple issues with "; "', () => {
+    const err = z.object({ a: z.string(), b: z.number() }).safeParse({ a: 1, b: 'x' });
+    if (err.success) throw new Error('Expected failure');
+    const summary = summariseZodError(err.error);
+    expect(summary).toContain('; ');
+  });
+
+  it('appends "...and N more." when there are more than 3 issues', () => {
+    const schema = z.object({
+      f1: z.string(),
+      f2: z.string(),
+      f3: z.string(),
+      f4: z.string(),
+    });
+    const err = schema.safeParse({ f1: 1, f2: 2, f3: 3, f4: 4 });
+    if (err.success) throw new Error('Expected failure');
+    const summary = summariseZodError(err.error);
+    expect(summary).toContain('...and 1 more.');
+  });
+
+  it('does not append "...and N more." for exactly 3 issues', () => {
+    const schema = z.object({ f1: z.string(), f2: z.string(), f3: z.string() });
+    const err = schema.safeParse({ f1: 1, f2: 2, f3: 3 });
+    if (err.success) throw new Error('Expected failure');
+    const summary = summariseZodError(err.error);
+    expect(summary).not.toContain('more.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A4: validateSpec structural check — on/visible inside props
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — A4: validateSpec catches on/visible in props', () => {
+  it('throws when "on" is placed inside props instead of at element level', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: {
+          type: 'Button',
+          // on placed inside props — should be at element level
+          props: {
+            label: 'Click',
+            on: { press: { action: 'setState', params: { statePath: '/x', value: true } } },
+          },
+          children: [],
+        },
       },
-    ];
-    expect(alreadyRendered(stepsWithCallButNoResult)).toBe(false);
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "btn":/);
   });
 
-  it('returns true when step has both toolCalls and toolResults with renderUI', () => {
-    // A successful renderUI lands in both arrays; toolResults is what matters.
-    expect(
-      alreadyRendered([{ toolResults: [{ toolName: 'renderUI' }] }]),
-    ).toBe(true);
+  it('throws when "visible" is placed inside props instead of at element level', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: { visible: false },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "card":/);
+  });
+
+  it('reports both a Zod prop error and a structural error in a single retry', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['h', 'btn'] },
+        h: { type: 'Heading', props: { level: 99, text: 'Bad' }, children: [] },
+        btn: {
+          type: 'Button',
+          props: {
+            label: 'Click',
+            on: { press: { action: 'setState', params: { statePath: '/x', value: true } } },
+          },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    // Zod prop failure for Heading
+    expect(msg).toMatch(/element "h"/);
+    expect(msg).toMatch(/level/);
+    // Structural failure for Button on-in-props
+    expect(msg).toMatch(/element "btn":/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E2: Recovery loop — malformed props surface actionable errors
+// ---------------------------------------------------------------------------
+
+describe('renderUI tool — E2: recovery loop, malformed props', () => {
+  it('throws with element key and prop name when Heading.level is out of range', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['h'] },
+        h: { type: 'Heading', props: { level: 99, text: 'Bad' }, children: [] },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "h"/);
+    expect(msg).toMatch(/level/);
+  });
+
+  it('throws with element key and prop name when Callout.tone is invalid', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['callout'] },
+        callout: {
+          type: 'Callout',
+          props: { tone: 'urgent', text: 'Watch out' },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "callout"/);
+    expect(msg).toMatch(/tone/);
+  });
+
+  it('throws with element key and prop name when Image.src is a non-http URL', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['img'] },
+        img: {
+          type: 'Image',
+          props: { src: 'ftp://example.com/img.png', alt: 'photo' },
+          children: [],
+        },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "img"/);
+    expect(msg).toMatch(/src/);
+  });
+
+  it('throws with element key when Button is missing required label', async () => {
+    const bad = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['btn'] },
+        btn: { type: 'Button', props: {}, children: [] },
+      },
+    };
+    const err = await execute(bad).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const msg = (err as Error).message;
+    expect(msg).toMatch(/element "btn"/);
+    expect(msg).toMatch(/label/);
   });
 });

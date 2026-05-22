@@ -1,8 +1,7 @@
 'use client';
 
 import type { UseChatHelpers } from '@ai-sdk/react';
-import type { Spec } from '@json-render/core';
-import type { StateStore } from '@json-render/core';
+import type { Spec, StateStore } from '@json-render/core';
 import { createStateStore } from '@json-render/core';
 import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { UIMessage } from 'ai';
@@ -31,6 +30,28 @@ type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
  */
 export function messageHasRenderUI(m: UIMessage): boolean {
   return (m.parts ?? []).some((p) => p.type === 'tool-renderUI');
+}
+
+/**
+ * Returns true when a message has at least one part that produces visible output
+ * on screen. Used by the spinner logic: the "Thinking..." indicator hides as soon
+ * as visible content arrives.
+ *
+ * - Non-empty text parts are visible.
+ * - File parts are visible.
+ * - Tool parts are visible only when their result is available (output-available
+ *   or output-error). input-streaming and input-available do not yet have output.
+ */
+export function messageHasVisibleOutput(message: UIMessage): boolean {
+  return (message.parts ?? []).some((p) => {
+    if (p.type === 'text') return p.text.length > 0;
+    if (p.type === 'file') return true;
+    if (p.type.startsWith('tool-')) {
+      const state = (p as { state?: string }).state;
+      return state === 'output-available' || state === 'output-error';
+    }
+    return false;
+  });
 }
 
 /**
@@ -467,14 +488,7 @@ export function ChatConversation({
   // between reasoning-end and the first text token. We only count text/file/tool parts.
   const last = messages.at(-1);
   const isWaiting = status === 'submitted' || status === 'streaming';
-  const assistantHasVisibleContent =
-    last?.role === 'assistant' &&
-    (last.parts ?? []).some((p) => {
-      if (p.type === 'text') return p.text.length > 0;
-      if (p.type === 'file') return true;
-      if (p.type.startsWith('tool-')) return true;
-      return false;
-    });
+  const assistantHasVisibleContent = last?.role === 'assistant' && messageHasVisibleOutput(last);
   const showThinking = isWaiting && !assistantHasVisibleContent;
   const isEmpty = messages.length === 0;
 

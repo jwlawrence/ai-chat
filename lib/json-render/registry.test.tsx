@@ -604,3 +604,63 @@ describe('registry — remaining primitives', () => {
     expect(screen.getByText('Cherry')).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// E1: Form-state stability — spec patch preserves in-progress input values
+// ---------------------------------------------------------------------------
+
+describe('registry — E1: form-state stability across spec patches', () => {
+  it('preserves Input value when spec is re-rendered with updated title but same form fields', () => {
+    const makeSpec = (title: string): Spec => ({
+      root: 'form-card',
+      elements: {
+        'form-card': {
+          type: 'Card',
+          props: { title },
+          children: ['name-form'],
+        },
+        'name-form': {
+          type: 'Form',
+          props: { name: 'reg' },
+          children: ['name-input'],
+        },
+        'name-input': {
+          type: 'Input',
+          props: { name: 'username', label: 'Username' },
+          children: [],
+        },
+      },
+    });
+
+    const store = createStateStore({});
+    const spec1 = makeSpec('Step 1');
+    const { rerender } = render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec1} registry={registry}>
+          <Renderer spec={spec1} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+
+    // Simulate user typing into the field
+    const inputBefore = screen.getByLabelText('Username') as HTMLInputElement;
+    fireEvent.change(inputBefore, { target: { value: 'jdoe' } });
+    expect(store.get('/reg/username')).toBe('jdoe');
+
+    // Re-render with a patched spec (title changed, same form fields)
+    const spec2 = makeSpec('Step 1 — updated');
+    rerender(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec2} registry={registry}>
+          <Renderer spec={spec2} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+
+    // Store state (and input value) must survive the re-render
+    expect(store.get('/reg/username')).toBe('jdoe');
+    const inputAfter = screen.getByLabelText('Username') as HTMLInputElement;
+    expect(inputAfter).toBe(inputBefore); // identity check: no remount
+    expect(inputAfter.value).toBe('jdoe');
+  });
+});

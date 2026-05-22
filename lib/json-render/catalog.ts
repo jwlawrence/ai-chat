@@ -923,6 +923,44 @@ function buildCatalogPrompt(): string {
   );
   lines.push('```');
   lines.push('');
+  // -------------------------------------------------------------------------
+  // Annotated list composition pattern
+  // -------------------------------------------------------------------------
+
+  lines.push('## Annotated lists (items + per-item badge)');
+  lines.push('');
+  lines.push(
+    'When the user wants a list where each item carries a status badge, do NOT use a flat `List` followed by a separate `Badge` row. Instead, use a `Card` whose `children` are small row elements — one per item — each containing a `Text` (the item label) and a `Badge` (the status). Example:',
+  );
+  lines.push('```json');
+  lines.push(
+    JSON.stringify(
+      {
+        root: 'status-card',
+        elements: {
+          'status-card': {
+            type: 'Card',
+            props: { title: 'Task status' },
+            children: ['row-1', 'badge-1', 'row-2', 'badge-2', 'row-3', 'badge-3'],
+          },
+          'row-1': { type: 'Text', props: { text: 'Deploy pipeline' }, children: [] },
+          'badge-1': { type: 'Badge', props: { label: 'Done', tone: 'success' }, children: [] },
+          'row-2': { type: 'Text', props: { text: 'Integration tests' }, children: [] },
+          'badge-2': { type: 'Badge', props: { label: 'Running', tone: 'warning' }, children: [] },
+          'row-3': { type: 'Text', props: { text: 'Staging deploy' }, children: [] },
+          'badge-3': { type: 'Badge', props: { label: 'Pending', tone: 'default' }, children: [] },
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  lines.push('```');
+  lines.push(
+    'Pair each Text row with its Badge by listing them adjacently in the parent `children` array.',
+  );
+  lines.push('');
+
   lines.push('Rules:');
   lines.push('- Set `root` to the key of the top-level element.');
   lines.push(

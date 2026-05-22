@@ -1,3 +1,4 @@
+import { validateSpec as jsonRenderValidateSpec } from '@json-render/core';
 import { tool } from 'ai';
 import { z } from 'zod';
 import {
@@ -44,12 +45,12 @@ const actionBindingSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .describe('Action params; shape depends on the action.'),
-    onSuccess: onSuccessSchema.optional().describe(
-      'Optional: state mutations or navigation to apply on a successful response.',
-    ),
-    onError: onErrorSchema.optional().describe(
-      'Optional: state mutations to apply when the action fails.',
-    ),
+    onSuccess: onSuccessSchema
+      .optional()
+      .describe('Optional: state mutations or navigation to apply on a successful response.'),
+    onError: onErrorSchema
+      .optional()
+      .describe('Optional: state mutations to apply when the action fails.'),
   })
   .passthrough();
 
@@ -100,7 +101,7 @@ type Spec = z.infer<typeof specSchema>;
 // Error formatting helpers
 // ---------------------------------------------------------------------------
 
-function formatErrors(failures: string[]): string {
+export function formatErrors(failures: string[]): string {
   const cap = 10;
   const shown = failures.slice(0, cap);
   const rest = failures.length - cap;
@@ -112,14 +113,19 @@ function formatErrors(failures: string[]): string {
   return msg;
 }
 
-function summariseZodError(error: z.ZodError): string {
-  return error.issues
-    .slice(0, 3)
-    .map((issue) => {
-      const path = issue.path.length > 0 ? `props.${issue.path.join('.')}` : 'props';
-      return `${path}: ${issue.message}`;
-    })
-    .join('; ');
+export function summariseZodError(error: z.ZodError): string {
+  const issues = error.issues;
+  const cap = 3;
+  const shown = issues.slice(0, cap);
+  const rest = issues.length - cap;
+  const parts = shown.map((issue) => {
+    const path = issue.path.length > 0 ? `props.${issue.path.join('.')}` : 'props';
+    return `${path}: ${issue.message}`;
+  });
+  if (rest > 0) {
+    parts.push(`...and ${rest} more.`);
+  }
+  return parts.join('; ');
 }
 
 // ---------------------------------------------------------------------------
@@ -210,13 +216,15 @@ export const renderUI = tool({
     }
 
     // 2. Validate each element
-    const knownComponents = catalog.data.components as Record<string, unknown>;
+    const knownComponents = new Set(
+      Object.keys(catalog.data.components as Record<string, unknown>),
+    );
 
     for (const [key, el] of Object.entries(spec.elements)) {
       // Check type is a known catalog component
-      if (!(el.type in knownComponents)) {
+      if (!knownComponents.has(el.type)) {
         failures.push(
-          `element "${key}": unknown component type "${el.type}" — must be one of ${Object.keys(knownComponents).join(', ')}`,
+          `element "${key}": unknown component type "${el.type}" — must be one of ${[...knownComponents].join(', ')}`,
         );
         continue; // can't validate props without a schema
       }
@@ -250,7 +258,15 @@ export const renderUI = tool({
       // Phase 3: also reject unknown action names so the model gets early feedback
       // instead of a silent no-op at runtime.
       if (el.on) {
-        const onBindings = el.on as Record<string, { action: string; params?: Record<string, unknown>; onSuccess?: { set?: Record<string, unknown> }; onError?: { set?: Record<string, unknown> } }>;
+        const onBindings = el.on as Record<
+          string,
+          {
+            action: string;
+            params?: Record<string, unknown>;
+            onSuccess?: { set?: Record<string, unknown> };
+            onError?: { set?: Record<string, unknown> };
+          }
+        >;
         for (const [eventName, binding] of Object.entries(onBindings)) {
           const mode = resolveActionMode(binding.action);
           if (mode === undefined) {
@@ -392,6 +408,30 @@ export const renderUI = tool({
       }
     }
 
+    // Structural validation pass — catches misplaced on/visible/repeat/watch
+    // that our Zod envelope strips silently. Runs in addition to the failures
+    // above so the model sees all classes of error in one retry, not staggered.
+    const NOVEL_CODES = new Set([
+      'on_in_props',
+      'visible_in_props',
+      'repeat_in_props',
+      'watch_in_props',
+      'empty_spec',
+    ] as const);
+    try {
+      const structuralResult = jsonRenderValidateSpec(
+        spec as Parameters<typeof jsonRenderValidateSpec>[0],
+      );
+      for (const issue of structuralResult.issues ?? []) {
+        if (issue.severity !== 'error') continue;
+        if (!NOVEL_CODES.has(issue.code as never)) continue;
+        const prefix = issue.elementKey ? `element "${issue.elementKey}"` : 'spec';
+        failures.push(`${prefix}: ${issue.message}`);
+      }
+    } catch (err) {
+      console.warn('[renderUI] jsonRenderValidateSpec threw:', err);
+    }
+
     if (failures.length > 0) {
       throw new Error(formatErrors(failures));
     }
@@ -399,6 +439,20 @@ export const renderUI = tool({
     return spec;
   },
 });
+
+/**
+ * Returns true when any step in the current turn produced a successful renderUI
+ * tool result. Uses toolResults (not toolCalls) so a failed validation attempt
+ * (which lands in toolCalls but not toolResults) does not trigger the gate.
+ *
+ * Exported so both route.ts and tests can import the same predicate without
+ * each carrying their own copy.
+ */
+export function hasRenderUIResult(
+  steps: Array<{ toolResults: Array<{ toolName: string }> }>,
+): boolean {
+  return steps.some((s) => s.toolResults.some((r) => r.toolName === 'renderUI'));
+}
 
 /**
  * DFS the spec's children graph (including Tabs/Accordion prop-level child
