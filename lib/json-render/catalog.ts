@@ -1,6 +1,12 @@
 import { defineCatalog, defineSchema } from '@json-render/core';
 import { z } from 'zod';
 import { dynBool, dynParam, dynStr } from './dynamic-value';
+// Primitive schemas are extracted to ./primitives/ when their shape exceeds ~20 lines
+// or contains reusable sub-shapes. Trivial schemas stay inline below.
+import { chartPropsSchema } from './primitives/chart-schema';
+import { kpiPropsSchema } from './primitives/kpi-schema';
+import { rowPropsSchema } from './primitives/row-schema';
+import { tablePropsSchema } from './primitives/table-schema';
 
 // ---------------------------------------------------------------------------
 // Schema — flat element-map format (root + elements record)
@@ -103,8 +109,8 @@ export const catalog = defineCatalog(schema, {
 
     Image: {
       props: z.object({
-        src: httpsUrl.describe('Must be an absolute URL starting with https://'),
-        alt: dynStr('Alternative text for accessibility'),
+        src: httpsUrl.describe('Absolute https:// URL'),
+        alt: dynStr('Alt text for accessibility'),
         caption: dynStr().optional(),
       }),
       description: 'An image with an optional caption.',
@@ -112,8 +118,8 @@ export const catalog = defineCatalog(schema, {
 
     Link: {
       props: z.object({
-        href: httpsUrl.describe('Must be an absolute URL starting with https://'),
-        text: dynStr('Link label shown to the user'),
+        href: httpsUrl.describe('Absolute https:// URL'),
+        text: dynStr('Link label'),
       }),
       description: 'A navigable hyperlink.',
     },
@@ -121,14 +127,11 @@ export const catalog = defineCatalog(schema, {
     Button: {
       props: z.object({
         label: dynStr(),
-        variant: z
-          .enum(['primary', 'secondary', 'ghost', 'destructive'])
-          .optional()
-          .describe('Visual style of the button'),
+        variant: z.enum(['primary', 'secondary', 'ghost', 'destructive']).optional(),
         disabled: dynBool().optional(),
       }),
       description:
-        'A clickable button. Wire actions via the element-level `on.press` field (NOT inside props). Example: `"on": { "press": { "action": "setState", "params": { "statePath": "/open", "value": true } } }`.',
+        'A clickable button. Wire actions on the element (NOT in props): `on: { press: { action: "submitForm", params: { formName: "x" } } }`.',
     },
 
     List: {
@@ -145,37 +148,34 @@ export const catalog = defineCatalog(schema, {
 
     Input: {
       props: z.object({
-        name: z.string().describe('Field name, used as the form key'),
+        name: z.string().describe('Form field key'),
         label: dynStr().optional(),
         placeholder: dynStr().optional(),
-        kind: z
-          .enum(['text', 'email', 'number', 'password'])
-          .optional()
-          .describe('HTML input type; defaults to text'),
+        kind: z.enum(['text', 'email', 'number', 'password']).optional(),
       }),
       description: 'A single-line text input field.',
     },
 
     Select: {
       props: z.object({
-        name: z.string().describe('Field name, used as the form key'),
+        name: z.string().describe('Form field key'),
         label: dynStr().optional(),
-        options: z.array(selectOption).min(1).describe('Available choices'),
+        options: z.array(selectOption).min(1),
       }),
       description: 'A dropdown select field.',
     },
 
     Checkbox: {
       props: z.object({
-        name: z.string().describe('Field name, used as the form key'),
-        label: dynStr('Label displayed next to the checkbox'),
+        name: z.string().describe('Form field key'),
+        label: dynStr('Label next to the checkbox'),
       }),
       description: 'A boolean checkbox with a label.',
     },
 
     Form: {
       props: z.object({
-        name: z.string().describe('Identifier for the form; used when submitting'),
+        name: z.string().describe('Form identifier; state subtree key'),
       }),
       description:
         'A form container. Form fields are supplied via the element-level `children` array.',
@@ -187,33 +187,25 @@ export const catalog = defineCatalog(schema, {
           .string()
           .optional()
           .describe(
-            'Optional JSON Pointer path (starts with "/"). When set, the Tabs become controlled: the active tab is read from this state path, and clicking a tab writes the new tab id to it. Pair with elements elsewhere in the spec that bind to the same path (e.g. via `{ "$state": "/path" }`) to react to tab changes.',
+            'Optional JSON Pointer (e.g. "/mode"). When set, Tabs are controlled: active tab is read from this state path, clicks write the tab id back. Bind other elements via `{ "$state": "/path" }` to react.',
           ),
-        tabs: z
-          .array(tabItem)
-          .min(1)
-          .describe('Tab definitions; each tab contains its own children'),
+        tabs: z.array(tabItem).min(1),
       }),
       description: 'A tabbed panel. Each tab has an id, a label, and an array of element keys.',
     },
 
     Accordion: {
       props: z.object({
-        items: z
-          .array(accordionItem)
-          .min(1)
-          .describe('Accordion sections; each section has an id, a label, and element keys'),
+        items: z.array(accordionItem).min(1),
       }),
       description: 'A collapsible accordion. Each item has an id, a label, and child element keys.',
     },
 
     Callout: {
       props: z.object({
-        tone: z
-          .enum(['info', 'success', 'warning', 'danger'])
-          .describe('Semantic colour of the callout'),
-        title: dynStr('Bold heading displayed above the callout text').optional(),
-        text: dynStr('Main callout message'),
+        tone: z.enum(['info', 'success', 'warning', 'danger']),
+        title: dynStr().optional(),
+        text: dynStr(),
       }),
       description: 'A highlighted notice block in one of four semantic tones.',
     },
@@ -221,10 +213,7 @@ export const catalog = defineCatalog(schema, {
     Badge: {
       props: z.object({
         label: dynStr(),
-        tone: z
-          .enum(['default', 'success', 'warning', 'danger'])
-          .optional()
-          .describe('Colour variant of the badge'),
+        tone: z.enum(['default', 'success', 'warning', 'danger']).optional(),
       }),
       description: 'A small inline label used to convey status or category.',
     },
@@ -232,6 +221,28 @@ export const catalog = defineCatalog(schema, {
     Divider: {
       props: z.object({}),
       description: 'A horizontal rule that visually separates content.',
+    },
+
+    Chart: {
+      props: chartPropsSchema,
+      description:
+        'Data viz. `kind`: line=trends, bar=comparisons, area=stacked trends, pie=parts-of-whole. Max 8 series × 100 points.',
+    },
+
+    Table: {
+      props: tablePropsSchema,
+      description: 'Tabular data. Columns define schema, rows hold data. Max 10×50.',
+    },
+
+    KPI: {
+      props: kpiPropsSchema,
+      description: 'Headline metric with optional delta. Compose 2–4 in a row for a dashboard.',
+    },
+
+    Row: {
+      props: rowPropsSchema,
+      description:
+        'A horizontal layout. Children render in equal-width flex slots. Use to compose KPIs, badges, or buttons side-by-side. Wrap in a Card for dashboard headers.',
     },
   },
 });
@@ -266,10 +277,9 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     'setState',
     {
       mode: 'local',
-      description:
-        'Set a value in client-side state. Handled automatically by ActionProvider — no model involvement.',
+      description: 'Set a value in client-side state. No model involvement.',
       params: z.object({
-        statePath: z.string().describe('JSON Pointer path, e.g. "/open"'),
+        statePath: z.string().describe('JSON Pointer, e.g. "/open"'),
         value: z.unknown().describe('New value to assign'),
       }),
     },
@@ -279,21 +289,14 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     {
       mode: 'model',
       description:
-        'Synthesize a user turn that tells the model the user pressed this button. The model sees the label + optional message/data and responds normally.',
+        'Send a user turn back to the model with this label + optional message/data. Model responds normally.',
       params: z.object({
-        label: z
-          .string()
-          .describe(
-            'Short user-facing label shown in the transcript chip (e.g. "Continue", "Approve").',
-          ),
-        message: z
-          .string()
-          .optional()
-          .describe('Optional extra context the model should see, in addition to the label.'),
+        label: z.string().describe('Transcript chip label (e.g. "Approve")'),
+        message: z.string().optional().describe('Extra context for the model'),
         data: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe('Optional structured payload echoed back to the model.'),
+          .describe('Structured payload echoed to the model'),
       }),
     },
   ],
@@ -302,19 +305,11 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     {
       mode: 'model',
       description:
-        'Submit a form. Gathers all field values from state at /<formName>/* and sends them to the model as a structured payload along with a transcript chip. The card locks the moment submit is pressed (same lock semantics as sendToModel). Use this when the user fills a form whose values the model should reason about.',
+        'Submit a form: gathers state at /<formName>/* and sends to the model with a transcript chip. Card locks on press (same as sendToModel).',
       params: z.object({
-        formName: z
-          .string()
-          .describe("The Form element's `name` prop. Used to read /{name}/* from state."),
-        label: z
-          .string()
-          .optional()
-          .describe('Transcript chip label. Defaults to "Submitted <formName>".'),
-        message: z
-          .string()
-          .optional()
-          .describe('Optional extra context the model should see in addition to the form data.'),
+        formName: z.string().describe("Matches the Form's `name` prop; reads /{name}/* from state"),
+        label: z.string().optional().describe('Chip label; defaults to "Submitted <formName>"'),
+        message: z.string().optional().describe('Extra context for the model'),
       }),
     },
   ],
@@ -323,7 +318,7 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     {
       mode: 'endpoint',
       description:
-        'Fire a backend POST to /api/actions/refreshData. The model never sees this press and the card stays interactive so the user can press again. Use endpoint-mode actions for refresh, save, mark-done, and delete-style operations where no model response is needed.',
+        'POST to /api/actions/refreshData. Model never sees the press; card stays interactive.',
       params: z.object({}),
     },
   ],
@@ -332,10 +327,10 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     {
       mode: 'endpoint',
       description:
-        'Fetch current weather data from the backend. Returns { summary, mode } in the response body. Pair with _writeResponseTo to update a display Text prop reactively. Use _setPendingAt to show a loading indicator while the request is in flight.',
+        'Fetch weather from backend. Returns { summary, mode }. Pair with _writeResponseTo + _setPendingAt for reactive display.',
       params: z.object({
         mode: dynParam(z.union([z.literal('daily'), z.literal('weekly')])).describe(
-          'Which forecast view: "daily" or "weekly". Required — read from state using { "$state": "/mode" } so it reacts to the user\'s tab selection.',
+          'Forecast view. Required — typically read from state as { "$state": "/mode" }.',
         ),
       }),
     },

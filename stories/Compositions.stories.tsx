@@ -140,7 +140,75 @@ const approvalCard: Spec = {
   },
 };
 
+// 5. Dashboard — Card + heading + Row of KPIs + Chart
+const dashboard: Spec = {
+  root: 'dashboard-card',
+  elements: {
+    'dashboard-card': {
+      type: 'Card',
+      props: {},
+      children: ['dashboard-heading', 'kpi-row', 'revenue-chart'],
+    },
+    'dashboard-heading': {
+      type: 'Heading',
+      props: { level: 2, text: 'Business dashboard' },
+      children: [],
+    },
+    'kpi-row': {
+      type: 'Row',
+      props: { gap: 'normal', align: 'stretch' },
+      children: ['mrr-kpi', 'users-kpi', 'uptime-kpi'],
+    },
+    'mrr-kpi': {
+      type: 'KPI',
+      props: {
+        label: 'MRR',
+        value: '$124K',
+        delta: { value: '+12%', trend: 'up' },
+      },
+      children: [],
+    },
+    'users-kpi': {
+      type: 'KPI',
+      props: {
+        label: 'Users',
+        value: '8,432',
+        delta: { value: '-3%', trend: 'down' },
+      },
+      children: [],
+    },
+    'uptime-kpi': {
+      type: 'KPI',
+      props: {
+        label: 'Uptime',
+        value: '99.9%',
+        delta: { value: '0', trend: 'flat' },
+      },
+      children: [],
+    },
+    'revenue-chart': {
+      type: 'Chart',
+      props: {
+        kind: 'line',
+        title: 'Monthly revenue',
+        xKey: 'month',
+        series: [{ key: 'revenue', label: 'Revenue' }],
+        data: [
+          { month: 'Jan', revenue: 98 },
+          { month: 'Feb', revenue: 105 },
+          { month: 'Mar', revenue: 112 },
+          { month: 'Apr', revenue: 118 },
+          { month: 'May', revenue: 121 },
+          { month: 'Jun', revenue: 124 },
+        ],
+      },
+      children: [],
+    },
+  },
+};
+
 export const CardStack: Story = { args: { spec: cardStack } };
 export const FullContactForm: Story = { args: { spec: fullForm } };
 export const AnnotatedList: Story = { args: { spec: annotatedList } };
 export const ApprovalCard: Story = { args: { spec: approvalCard } };
+export const Dashboard: Story = { args: { spec: dashboard } };

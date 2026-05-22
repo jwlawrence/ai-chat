@@ -47,7 +47,7 @@ const validSpec = {
 // ---------------------------------------------------------------------------
 
 describe('catalog', () => {
-  it('has all 15 primitives registered', () => {
+  it('has all primitives registered', () => {
     const expected = [
       'Card',
       'Heading',
@@ -65,6 +65,10 @@ describe('catalog', () => {
       'Callout',
       'Badge',
       'Divider',
+      'Chart',
+      'Table',
+      'KPI',
+      'Row',
     ];
     expect(catalog.componentNames).toEqual(expect.arrayContaining(expected));
     expect(catalog.componentNames).toHaveLength(expected.length);
@@ -265,7 +269,7 @@ describe('catalogPrompt', () => {
     // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB);
     // Phase 6 added annotated-list pattern (~20.3 KB actual).
     // Bound = actual (~20_325) + 2_000 so a silent doubling would trip this guard.
-    expect(catalogPrompt.length).toBeLessThan(22_500);
+    expect(catalogPrompt.length).toBeLessThan(20_500);
   });
 });
 
@@ -328,7 +332,7 @@ describe('ACTION_REGISTRY + resolveActionMode — Phase 4: refreshData', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 4 endpoint section', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_500);
+    expect(catalogPrompt.length).toBeLessThan(20_500);
   });
 });
 
@@ -449,7 +453,7 @@ describe('catalogPrompt — Phase 4.1 keywords', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 4.1 additions', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_500);
+    expect(catalogPrompt.length).toBeLessThan(20_500);
   });
 
   it('mentions valueStatePath', () => {
@@ -584,7 +588,7 @@ describe('catalogPrompt — Phase 6/B1: annotated list pattern', () => {
     // Actual size after Phase 6 annotated-list addition: ~20_325 bytes.
     // Bound = actual + 2_000 to catch accidental bloat.
     expect(catalogPrompt.length).toBeGreaterThan(19_000);
-    expect(catalogPrompt.length).toBeLessThan(22_500);
+    expect(catalogPrompt.length).toBeLessThan(20_500);
   });
 });
 
@@ -607,6 +611,6 @@ describe('catalogPrompt — Phase 5: form submission section', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 5 additions', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_500);
+    expect(catalogPrompt.length).toBeLessThan(20_500);
   });
 });

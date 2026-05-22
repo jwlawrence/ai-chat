@@ -48,6 +48,10 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { TabsContent, TabsList, TabsTrigger, Tabs as UiTabs } from '@/components/ui/tabs';
 import { catalog, resolveActionMode } from '@/lib/json-render/catalog';
+import { Chart } from './primitives/chart';
+import { KPI } from './primitives/kpi';
+import { Row } from './primitives/row';
+import { Table } from './primitives/table';
 
 // ---------------------------------------------------------------------------
 // SpecContext — gives Tabs / Accordion access to the flat spec for rendering
@@ -657,5 +661,40 @@ export const { registry } = defineRegistry(catalog, {
 
     // ---- Divider ------------------------------------------------------------
     Divider: (() => <Separator />) satisfies ComponentFn<typeof catalog, 'Divider'>,
+
+    // ---- Chart / Table / KPI -----------------------------------------------
+    // Catalog props are typed via z.output (z.infer), while the primitive
+    // components accept the corresponding z.input shape (ChartInput / TableInput
+    // / KpiInput, re-aliased as *Props in their modules). The two shapes are
+    // structurally compatible at runtime (json-render's resolveElementProps
+    // already applies defaults before the component is invoked), so we widen
+    // through Parameters<typeof X>[0] to bridge the input/output mismatch.
+    Chart: (({ props }) => (
+      <Chart {...(props as Parameters<typeof Chart>[0])} />
+    )) satisfies ComponentFn<typeof catalog, 'Chart'>,
+    Table: (({ props }) => (
+      <Table {...(props as Parameters<typeof Table>[0])} />
+    )) satisfies ComponentFn<typeof catalog, 'Table'>,
+    KPI: (({ props }) => <KPI {...(props as Parameters<typeof KPI>[0])} />) satisfies ComponentFn<
+      typeof catalog,
+      'KPI'
+    >,
+
+    // ---- Row ----------------------------------------------------------------
+    // Row is a horizontal flex layout. The renderer hands us `children` as a
+    // ReactNode (an array of pre-rendered child elements). We wrap each child
+    // in its own `flex-1 min-w-0` div so siblings share the row width evenly
+    // and nested charts/tables don't overflow their slot.
+    Row: (({ props, children }) => {
+      const rowProps = props as Parameters<typeof Row>[0];
+      const wrapped = React.Children.map(children, (child, i) =>
+        child == null || child === false ? null : (
+          <div key={i} className="flex-1 min-w-0">
+            {child}
+          </div>
+        ),
+      );
+      return <Row {...rowProps}>{wrapped}</Row>;
+    }) satisfies ComponentFn<typeof catalog, 'Row'>,
   },
 });
