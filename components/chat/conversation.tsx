@@ -504,7 +504,10 @@ export function ChatConversation({
               const hasPressChip = messageHasPressChip(m);
               return (
                 <Message key={m.id} from={m.role}>
-                  <MessageContent>
+                  {/* renderUI cards need room to breathe — MessageContent's default w-fit
+                      collapses the card to its narrowest child, squashing charts + stacking
+                      KPIs that should sit in a row. */}
+                  <MessageContent className={hasRenderUI ? 'w-full' : undefined}>
                     {m.parts.map((p, i) => {
                       // Parts within a message have stable ordering for that message — composite key is safe.
                       const key = `${m.id}-${i}`;
