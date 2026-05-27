@@ -14,10 +14,11 @@ import { generateTitle } from '@/lib/ai/title';
 import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
 import { webSearch } from '@/lib/ai/tools/web-search';
 import { getUserId } from '@/lib/auth';
+import { resolveActor } from '@/lib/budget/identity';
+import { type PreflightResult, preflight } from '@/lib/budget/preflight';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
-  addUsageToSession,
   appendMessages,
   countMessages,
   createSession,
@@ -26,6 +27,7 @@ import {
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
+import { createStreamOnFinish } from './on-finish';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -56,6 +58,38 @@ export async function POST(req: Request) {
   const incoming = body.messages as unknown as UIMessage[];
 
   const userId = await getUserId();
+
+  // Anonymous identity is provided by Phase 4 middleware via the `pac_anon`
+  // cookie. Until that lands, accept it as a header for tests and integrations;
+  // real anonymous traffic will currently resolve to actor=null and skip the
+  // per-actor cap while global caps still apply (graceful degradation).
+  const rawAnonymousId = userId ? null : req.headers.get('x-anonymous-id');
+  const anonymousId = rawAnonymousId && rawAnonymousId.length <= 128 ? rawAnonymousId : null;
+  const actor = resolveActor({ userId, anonymousId });
+  const byok = false; // wired up in Phase 5
+  // Pin the request to a single UTC day so the preflight read and postflight
+  // write agree even if the stream completes after midnight.
+  const requestDay = new Date().toISOString().slice(0, 10);
+
+  let gate: PreflightResult;
+  try {
+    gate = await preflight({ actor, byok });
+  } catch (err) {
+    console.error('[preflight] failed — failing closed', err);
+    return new Response(
+      JSON.stringify({ error: 'service_unavailable', reason: 'preflightFailure' }),
+      { status: 503, headers: { 'content-type': 'application/json' } },
+    );
+  }
+  if (!gate.allow) {
+    return new Response(JSON.stringify({ error: 'quota', reason: gate.reason }), {
+      status: 429,
+      headers: {
+        'content-type': 'application/json',
+        'retry-after': '60',
+      },
+    });
+  }
 
   // Resolve session + model
   let sessionId: string;
@@ -122,21 +156,19 @@ export async function POST(req: Request) {
         },
         // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
         stopWhen: stepCountIs(5),
+        maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS_PER_TURN ?? 10000),
         abortSignal: req.signal,
         // Persist usage BEFORE the stream closes so the client's SWR mutate() in useChat's
         // onFinish picks up fresh totals.
-        onFinish: async ({ totalUsage }) => {
-          if (req.signal.aborted) return;
-          try {
-            await addUsageToSession(sessionId, userId, {
-              tokensIn: totalUsage.inputTokens ?? 0,
-              tokensOut: totalUsage.outputTokens ?? 0,
-              tokensCached: totalUsage.cachedInputTokens ?? 0,
-            });
-          } catch (err) {
-            console.error('usage persist failed', err);
-          }
-        },
+        onFinish: createStreamOnFinish({
+          actor,
+          modelId: model,
+          byok,
+          day: requestDay,
+          sessionId,
+          userId,
+          isAborted: () => req.signal.aborted,
+        }),
       });
       writer.merge(result.toUIMessageStream());
     },
@@ -158,7 +190,10 @@ export async function POST(req: Request) {
         ]);
         await touchSession(sessionId, userId);
       } catch (err) {
-        console.error('persistence failed — turn will not appear in history', err);
+        console.error(
+          '[chat] persistence error in onFinish — history may be incomplete or out of order',
+          err,
+        );
         return;
       }
 
@@ -169,12 +204,12 @@ export async function POST(req: Request) {
           await renameSession(sessionId, title, userId);
         } catch (err) {
           // Non-fatal: keep the default 'New chat'.
-          console.error('title generation failed', err);
+          console.error('[chat] title generation failed', err);
         }
       }
     },
     onError: (err) => {
-      console.error('chat stream error', err);
+      console.error('[chat] stream error', err);
       return 'Something went wrong while talking to the model.';
     },
   });

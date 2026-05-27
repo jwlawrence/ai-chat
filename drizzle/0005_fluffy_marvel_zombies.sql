@@ -1,0 +1,2 @@
+DROP INDEX "usage_ledger_global_month_idx";--> statement-breakpoint
+ALTER TABLE "usage_ledger" ADD CONSTRAINT "usage_ledger_actor_kind_check" CHECK ("usage_ledger"."actor_kind" IN ('user', 'anonymous'));

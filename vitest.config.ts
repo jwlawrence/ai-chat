@@ -8,6 +8,7 @@ export default defineConfig({
     },
   },
   test: {
+    globalSetup: ['./lib/test-global-setup.ts'],
     environment: 'node',
     include: [
       'lib/**/*.test.ts',

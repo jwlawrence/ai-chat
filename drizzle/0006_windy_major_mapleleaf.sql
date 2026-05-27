@@ -1,0 +1,1 @@
+ALTER TABLE "usage_ledger" DROP COLUMN "month";

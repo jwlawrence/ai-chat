@@ -14,6 +14,9 @@ export async function listSessions(userId: string | null): Promise<Session[]> {
     .orderBy(desc(chatSessions.updatedAt));
 }
 
+// Phase-4 TODO: `userId: string | null` won't be sufficient once anonymous
+// sessions can be claimed across sign-in; the signature needs to also accept
+// `anonymousId` and OR them in the WHERE clause. Touches every callsite below.
 export async function getSession(id: string, userId: string | null): Promise<Session | null> {
   const rows = await db
     .select()

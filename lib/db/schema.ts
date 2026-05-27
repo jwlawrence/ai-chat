@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  check,
   index,
   integer,
   jsonb,
@@ -100,7 +101,34 @@ export const messages = pgTable(
   }),
 );
 
+export const usageLedger = pgTable(
+  'usage_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorId: text('actor_id').notNull(),
+    actorKind: text('actor_kind').notNull(), // 'user' | 'anonymous' — enforced by CHECK constraint
+    day: text('day').notNull(), // YYYY-MM-DD in UTC
+    modelId: text('model_id').notNull(),
+    tokensIn: bigint('tokens_in', { mode: 'number' }).notNull(),
+    tokensOut: bigint('tokens_out', { mode: 'number' }).notNull(),
+    tokensCached: bigint('tokens_cached', { mode: 'number' }).notNull(),
+    costUsd: integer('cost_micro_usd').notNull(),
+    byok: integer('byok').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    actorDayIdx: index('usage_ledger_actor_day_idx').on(t.actorId, t.day),
+    globalDayIdx: index('usage_ledger_global_day_idx').on(t.day),
+    actorKindCheck: check(
+      'usage_ledger_actor_kind_check',
+      sql`${t.actorKind} IN ('user', 'anonymous')`,
+    ),
+  }),
+);
+
 export type Session = typeof chatSessions.$inferSelect;
 export type NewSession = typeof chatSessions.$inferInsert;
 export type DbMessage = typeof messages.$inferSelect;
 export type NewDbMessage = typeof messages.$inferInsert;
+export type UsageLedgerRow = typeof usageLedger.$inferSelect;
+export type NewUsageLedgerRow = typeof usageLedger.$inferInsert;
