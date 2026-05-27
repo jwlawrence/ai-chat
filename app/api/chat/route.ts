@@ -25,7 +25,6 @@ import {
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
-import { catalogPrompt } from '@/lib/json-render/catalog';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -39,10 +38,6 @@ const BodySchema = z.object({
 const CONTEXT_WINDOW = Number.parseInt(process.env.CONTEXT_WINDOW_MESSAGES ?? '50', 10);
 
 const tools = { webSearch, renderUI };
-
-if (process.env.NODE_ENV !== 'production') {
-  console.log(`[chat] catalogPrompt ~${Math.ceil(catalogPrompt.length / 4)} tokens`);
-}
 
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json());

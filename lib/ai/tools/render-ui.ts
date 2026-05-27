@@ -4,7 +4,6 @@ import { z } from 'zod';
 import {
   ACTION_REGISTRY,
   catalog,
-  catalogPrompt,
   resolveActionMode,
   validateElementProps,
 } from '@/lib/json-render/catalog';
@@ -187,11 +186,9 @@ function validateVisibility(cond: unknown, context: string, failures: string[]):
 // ---------------------------------------------------------------------------
 
 export const renderUI = tool({
-  description: [
-    'Render a structured UI card inline in the chat by emitting a JSON spec. Call this when the user asks for a card, form, dashboard, comparison, or any structured visual layout.',
-    'This tool is fully self-contained: the complete component vocabulary, prop shapes, and authoring rules are documented below. Do NOT search the web for "renderUI" or "json-render" — there is no external API to reference; the schema below IS the spec.',
-    catalogPrompt,
-  ].join('\n\n'),
+  description: `Render a structured UI card inline in the chat by emitting a JSON spec. Call this when the user asks for a card, form, dashboard, comparison, or any structured visual layout.
+
+This tool is fully self-contained: the complete component vocabulary, prop shapes, and authoring rules are in the system prompt. Do NOT search the web for "renderUI" or "json-render" — there is no external API to reference; the schema in the system prompt IS the spec.`,
 
   inputSchema: specSchema,
 

@@ -22,7 +22,7 @@ describe('catalogPrompt size', () => {
     console.log(`catalogPrompt: ${catalogPrompt.length} chars, ~${approxTokens} tokens`);
     expect(
       approxTokens,
-      'catalogPrompt is spliced into the renderUI tool description on every turn; keep under 5500 to bound per-turn cost. See plans/public-hosting.md cost model.',
+      'catalogPrompt is the stable system-prompt prefix on every turn; keep under 5500 to bound per-turn cost. See plans/public-hosting.md cost model.',
     ).toBeLessThan(5500);
   });
 });

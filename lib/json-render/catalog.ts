@@ -383,7 +383,7 @@ export function validateElementProps(
 }
 
 // ---------------------------------------------------------------------------
-// catalogPrompt — splice into the renderUI tool description
+// catalogPrompt — stable system-prompt prefix for Azure auto-cache
 // ---------------------------------------------------------------------------
 
 /**
@@ -974,8 +974,10 @@ function buildCatalogPrompt(): string {
 
 /**
  * A concise string describing all catalog components and their props.
- * Built from the catalog definition at module load time; spliced into the
- * renderUI tool description so the model knows the available vocabulary.
+ * Built from the catalog definition at module load time; placed at the start
+ * of `SYSTEM_PROMPT` as the stable cacheable prefix so Azure auto-cache can
+ * reuse it across turns. The renderUI tool description points the model to
+ * the system prompt rather than repeating the vocabulary inline.
  *
  * Uses single-shot tool-calling format (one complete JSON object) rather than
  * the streaming JSONL-patch protocol that `catalog.prompt()` targets.
