@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { getUserId } from '@/lib/auth';
 import { deleteSession, renameSession } from '@/lib/db/queries';
 
 export const runtime = 'nodejs';
@@ -12,12 +13,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!parsed.success) {
     return new Response('Bad request', { status: 400 });
   }
-  await renameSession(id, parsed.data.title);
+  const userId = await getUserId();
+  await renameSession(id, parsed.data.title, userId);
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await deleteSession(id);
+  const userId = await getUserId();
+  await deleteSession(id, userId);
   return NextResponse.json({ ok: true });
 }

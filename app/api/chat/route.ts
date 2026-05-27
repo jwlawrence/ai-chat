@@ -13,6 +13,7 @@ import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { generateTitle } from '@/lib/ai/title';
 import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
 import { webSearch } from '@/lib/ai/tools/web-search';
+import { getUserId } from '@/lib/auth';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
@@ -32,7 +33,14 @@ export const maxDuration = 60;
 const BodySchema = z.object({
   sessionId: z.string().uuid().optional(),
   model: z.string().optional(),
-  messages: z.array(z.any()), // UIMessage[] — trust the SDK shape
+  messages: z.array(
+    z
+      .object({
+        role: z.enum(['user', 'assistant', 'system']),
+        parts: z.array(z.unknown()).optional(),
+      })
+      .passthrough(),
+  ),
 });
 
 const CONTEXT_WINDOW = Number.parseInt(process.env.CONTEXT_WINDOW_MESSAGES ?? '50', 10);
@@ -45,7 +53,9 @@ export async function POST(req: Request) {
     return new Response('Bad request', { status: 400 });
   }
   const body = parsed.data;
-  const incoming = body.messages as UIMessage[];
+  const incoming = body.messages as unknown as UIMessage[];
+
+  const userId = await getUserId();
 
   // Resolve session + model
   let sessionId: string;
@@ -53,15 +63,15 @@ export async function POST(req: Request) {
   let model: ModelId;
 
   if (body.sessionId) {
-    const session = await getSession(body.sessionId);
+    const session = await getSession(body.sessionId, userId);
     if (!session) return new Response('Session not found', { status: 404 });
     if (!isModelId(session.model)) return new Response('Bad model on session', { status: 500 });
     sessionId = session.id;
     model = session.model;
   } else {
     const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
-    const session = await createSession({ model: candidate });
-    sessionId = session.id;
+    const created = await createSession({ model: candidate, userId });
+    sessionId = created.id;
     model = candidate;
     isNewSession = true;
   }
@@ -70,7 +80,7 @@ export async function POST(req: Request) {
   // Use `incoming` (full client history) for reconciliation — NOT `windowed` (which is
   // truncated for the model). Otherwise long sessions would falsely trim in-DB messages.
   // The trim happens only after a successful onFinish so aborted/error turns don't disturb history.
-  const dbCount = isNewSession ? 0 : await countMessages(sessionId);
+  const dbCount = isNewSession ? 0 : await countMessages(sessionId, userId);
   const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
 
   // The view sent to the model: sliding window of the most recent messages.
@@ -118,7 +128,7 @@ export async function POST(req: Request) {
         onFinish: async ({ totalUsage }) => {
           if (req.signal.aborted) return;
           try {
-            await addUsageToSession(sessionId, {
+            await addUsageToSession(sessionId, userId, {
               tokensIn: totalUsage.inputTokens ?? 0,
               tokensOut: totalUsage.outputTokens ?? 0,
               tokensCached: totalUsage.cachedInputTokens ?? 0,
@@ -140,13 +150,13 @@ export async function POST(req: Request) {
       // (response is already closed), so at minimum log them prominently.
       try {
         if (trimCount > 0) {
-          await trimTrailingMessages(sessionId, trimCount);
+          await trimTrailingMessages(sessionId, userId, trimCount);
         }
-        await appendMessages(sessionId, [
+        await appendMessages(sessionId, userId, [
           ...newUserMessages.map((m) => ({ role: m.role, parts: m.parts })),
           { role: responseMessage.role, parts: responseMessage.parts },
         ]);
-        await touchSession(sessionId);
+        await touchSession(sessionId, userId);
       } catch (err) {
         console.error('persistence failed — turn will not appear in history', err);
         return;
@@ -156,7 +166,7 @@ export async function POST(req: Request) {
       if (isNewSession) {
         try {
           const title = await generateTitle(finalMessages);
-          await renameSession(sessionId, title);
+          await renameSession(sessionId, title, userId);
         } catch (err) {
           // Non-fatal: keep the default 'New chat'.
           console.error('title generation failed', err);

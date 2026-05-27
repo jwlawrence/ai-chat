@@ -15,6 +15,20 @@
       "when": 1778875659987,
       "tag": "0001_chunky_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778960000000,
+      "tag": "0002_auth_users_rename_chat_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779821704982,
+      "tag": "0003_military_bloodscream",
+      "breakpoints": true
     }
   ]
 }

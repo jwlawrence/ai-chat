@@ -8,7 +8,17 @@
  * We mock @/lib/db/client so no real database is required.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Spy on drizzle-orm eq and isNull so we can assert which branch runs.
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return {
+    ...actual,
+    eq: vi.fn(actual.eq),
+    isNull: vi.fn(actual.isNull),
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Mock @/lib/db/client BEFORE importing queries.
@@ -17,24 +27,60 @@ import { describe, expect, it, vi } from 'vitest';
 // vi.hoisted() to declare the mocks in a way the factory can safely close over.
 // ---------------------------------------------------------------------------
 
-const { valuesMock, insertMock } = vi.hoisted(() => {
+const { valuesMock, insertMock, orderByMock, whereMock, selectMock } = vi.hoisted(() => {
+  const orderByMock = vi.fn().mockResolvedValue([]);
+  const limitMock = vi.fn().mockResolvedValue([]);
+  const whereMock = vi.fn(() => ({ orderBy: orderByMock, limit: limitMock }));
+  const fromMock = vi.fn(() => ({ where: whereMock }));
+  const selectMock = vi.fn(() => ({ from: fromMock }));
   const valuesMock = vi.fn();
   const insertMock = vi.fn(() => ({ values: valuesMock }));
-  return { valuesMock, insertMock };
+  return { valuesMock, insertMock, orderByMock, whereMock, selectMock };
 });
 
 vi.mock('@/lib/db/client', () => ({
-  db: { insert: insertMock },
+  db: { insert: insertMock, select: selectMock, update: vi.fn(), delete: vi.fn() },
 }));
 
-// Import AFTER the mock is registered.
-import { appendMessages } from './queries';
+// Import AFTER the mocks are registered.
+import { eq, isNull } from 'drizzle-orm';
+import { appendMessages, listSessions } from './queries';
+
+describe('listSessions — userId filtering', () => {
+  beforeEach(() => {
+    vi.mocked(eq).mockClear();
+    vi.mocked(isNull).mockClear();
+    whereMock.mockClear();
+    orderByMock.mockClear();
+    selectMock.mockClear();
+  });
+
+  it('short-circuits to [] when userId is null (no DB call)', async () => {
+    const result = await listSessions(null);
+    expect(result).toEqual([]);
+    expect(whereMock).not.toHaveBeenCalled();
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it('calls eq with userId when string given (not isNull)', async () => {
+    orderByMock.mockResolvedValueOnce([]);
+    await listSessions('user-123');
+    expect(vi.mocked(eq)).toHaveBeenCalled();
+    expect(vi.mocked(isNull)).not.toHaveBeenCalled();
+    expect(whereMock).toHaveBeenCalled();
+  });
+});
 
 describe('appendMessages — Fix #13: distinct createdAt per row', () => {
   it('stamps each row with a monotonically-increasing createdAt', async () => {
     valuesMock.mockResolvedValue(undefined);
 
-    await appendMessages('session-abc', [
+    // Ownership gate: make the select mock return a matching session row.
+    whereMock.mockReturnValueOnce({
+      orderBy: orderByMock,
+      limit: vi.fn().mockResolvedValue([{ id: 'session-abc' }]),
+    });
+    await appendMessages('session-abc', null, [
       { role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       { role: 'assistant', parts: [{ type: 'text', text: 'world' }] },
     ]);
@@ -57,7 +103,7 @@ describe('appendMessages — Fix #13: distinct createdAt per row', () => {
     valuesMock.mockClear();
     insertMock.mockClear();
 
-    await appendMessages('session-abc', []);
+    await appendMessages('session-abc', null, []);
 
     // db.insert should not have been called at all.
     expect(insertMock).not.toHaveBeenCalled();
@@ -68,7 +114,12 @@ describe('appendMessages — Fix #13: distinct createdAt per row', () => {
     insertMock.mockClear();
     valuesMock.mockResolvedValue(undefined);
 
-    await appendMessages('session-single', [
+    // Ownership gate: make the select mock return a matching session row.
+    whereMock.mockReturnValueOnce({
+      orderBy: orderByMock,
+      limit: vi.fn().mockResolvedValue([{ id: 'session-single' }]),
+    });
+    await appendMessages('session-single', null, [
       { role: 'user', parts: [{ type: 'text', text: 'only one' }] },
     ]);
 

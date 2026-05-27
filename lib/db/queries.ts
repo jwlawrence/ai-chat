@@ -1,50 +1,116 @@
-import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from './client';
-import { messages, sessions, type NewDbMessage, type Session } from './schema';
+import { chatSessions, messages, type NewDbMessage, type Session } from './schema';
 
-export async function listSessions(): Promise<Session[]> {
-  return db.select().from(sessions).orderBy(desc(sessions.updatedAt));
+export async function listSessions(userId: string | null): Promise<Session[]> {
+  // Phase 4 will scope anonymous listing by anonymous_id cookie. Until then,
+  // anonymous users get an empty list rather than leaking every other visitor's chats.
+  if (userId === null) return [];
+  return db
+    .select()
+    .from(chatSessions)
+    .where(eq(chatSessions.userId, userId))
+    .orderBy(desc(chatSessions.updatedAt));
 }
 
-export async function getSession(id: string): Promise<Session | null> {
-  const rows = await db.select().from(sessions).where(eq(sessions.id, id)).limit(1);
+export async function getSession(id: string, userId: string | null): Promise<Session | null> {
+  const rows = await db
+    .select()
+    .from(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    )
+    .limit(1);
   return rows[0] ?? null;
 }
 
-export async function createSession(input: { model: string }): Promise<Session> {
-  const [row] = await db.insert(sessions).values({ model: input.model }).returning();
+export async function createSession(input: {
+  model: string;
+  userId?: string | null;
+}): Promise<Session> {
+  const [row] = await db
+    .insert(chatSessions)
+    .values({ model: input.model, userId: input.userId ?? null })
+    .returning();
   return row;
 }
 
-export async function renameSession(id: string, title: string): Promise<void> {
-  await db.update(sessions).set({ title, updatedAt: new Date() }).where(eq(sessions.id, id));
+export async function renameSession(
+  id: string,
+  title: string,
+  userId: string | null,
+): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ title, updatedAt: new Date() })
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    );
 }
 
-export async function touchSession(id: string): Promise<void> {
-  await db.update(sessions).set({ updatedAt: new Date() }).where(eq(sessions.id, id));
+export async function touchSession(id: string, userId: string | null): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    );
 }
 
 export async function addUsageToSession(
   id: string,
+  userId: string | null,
   usage: { tokensIn: number; tokensOut: number; tokensCached: number },
 ): Promise<void> {
   await db
-    .update(sessions)
+    .update(chatSessions)
     .set({
-      tokensIn: sql`${sessions.tokensIn} + ${usage.tokensIn}`,
-      tokensOut: sql`${sessions.tokensOut} + ${usage.tokensOut}`,
-      tokensCached: sql`${sessions.tokensCached} + ${usage.tokensCached}`,
+      tokensIn: sql`${chatSessions.tokensIn} + ${usage.tokensIn}`,
+      tokensOut: sql`${chatSessions.tokensOut} + ${usage.tokensOut}`,
+      tokensCached: sql`${chatSessions.tokensCached} + ${usage.tokensCached}`,
       updatedAt: new Date(),
     })
-    .where(eq(sessions.id, id));
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    );
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.id, id));
+export async function deleteSession(id: string, userId: string | null): Promise<void> {
+  await db
+    .delete(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, id),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    );
 }
 
-export async function getMessages(sessionId: string): Promise<UIMessage[]> {
+export async function getMessages(sessionId: string, userId: string | null): Promise<UIMessage[]> {
+  const owner = await db
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, sessionId),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    )
+    .limit(1);
+  if (owner.length === 0) return [];
   const rows = await db
     .select()
     .from(messages)
@@ -59,9 +125,21 @@ export async function getMessages(sessionId: string): Promise<UIMessage[]> {
 
 export async function appendMessages(
   sessionId: string,
+  userId: string | null,
   toInsert: Array<Pick<UIMessage, 'role' | 'parts'>>,
 ): Promise<void> {
   if (toInsert.length === 0) return;
+  const owner = await db
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, sessionId),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    )
+    .limit(1);
+  if (owner.length === 0) return;
   // Stamp each row with a distinct createdAt offset by its array index.
   // Postgres's defaultNow() evaluates once per statement, so a batch insert
   // would otherwise give every row the same timestamp — and getMessages'
@@ -77,7 +155,18 @@ export async function appendMessages(
   await db.insert(messages).values(rows);
 }
 
-export async function countMessages(sessionId: string): Promise<number> {
+export async function countMessages(sessionId: string, userId: string | null): Promise<number> {
+  const owner = await db
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, sessionId),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    )
+    .limit(1);
+  if (owner.length === 0) return 0;
   const [row] = await db
     .select({ value: count() })
     .from(messages)
@@ -86,8 +175,23 @@ export async function countMessages(sessionId: string): Promise<number> {
 }
 
 // Deletes the `n` most-recently-created messages in the session. No-op if n <= 0.
-export async function trimTrailingMessages(sessionId: string, n: number): Promise<void> {
+export async function trimTrailingMessages(
+  sessionId: string,
+  userId: string | null,
+  n: number,
+): Promise<void> {
   if (n <= 0) return;
+  const owner = await db
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(
+      and(
+        eq(chatSessions.id, sessionId),
+        userId !== null ? eq(chatSessions.userId, userId) : isNull(chatSessions.userId),
+      ),
+    )
+    .limit(1);
+  if (owner.length === 0) return;
   const rows = await db
     .select({ id: messages.id })
     .from(messages)
