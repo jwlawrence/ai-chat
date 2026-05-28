@@ -136,66 +136,114 @@ export function messageHasPressChip(m: UIMessage): boolean {
 /**
  * Build one async handler per endpoint-mode action.
  * Exported so unit tests can exercise it directly without mounting React.
+ *
+ * Supports two metadata fields from ACTION_REGISTRY:
+ *  - `oneShot: true` — locks the card on press (mirrors sendToModel); rolls back on failure.
+ *  - `responseEffect: 'navigate'` — reads `redirectTo` from the 2xx response body and
+ *    calls navigate(url) after same-origin URL validation.
  */
 export function buildEndpointHandlers(opts: {
   store: StateStore;
   inFlightRef: { current: Map<string, symbol> };
   actionNames: ReadonlySet<string>;
+  lockedRef?: { current: boolean };
+  setIsLocked?: (v: boolean) => void;
+  navigate?: (url: string) => void;
 }): Record<string, (params: Record<string, unknown>) => Promise<void>> {
+  const navigate = opts.navigate ?? ((url: string) => window.location.assign(url));
   const { store, inFlightRef, actionNames } = opts;
-  const entries = [...actionNames].map((actionName) => [
-    actionName,
-    async (params: Record<string, unknown>) => {
-      const writeResponseTo =
-        typeof params._writeResponseTo === 'string' ? params._writeResponseTo : undefined;
-      const setPendingAt =
-        typeof params._setPendingAt === 'string' ? params._setPendingAt : undefined;
-
-      const postParams = Object.fromEntries(
-        Object.entries(params).filter(([k]) => k !== '_writeResponseTo' && k !== '_setPendingAt'),
-      );
-
-      const key = writeResponseTo ?? actionName;
-      const token = Symbol();
-      inFlightRef.current.set(key, token);
-      const isLatest = () => inFlightRef.current.get(key) === token;
-
-      if (setPendingAt) {
-        store.set(setPendingAt, true);
-      }
-
-      try {
-        const res = await fetch(`/api/actions/${actionName}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(postParams),
-        });
-        if (!res.ok) {
-          if (isLatest()) toast.error(`Action "${actionName}" failed (${res.status})`);
-          return;
+  const entries = [...actionNames].map((actionName) => {
+    const def = ACTION_REGISTRY.get(actionName);
+    const oneShot = def?.oneShot === true;
+    const responseEffect = def?.responseEffect;
+    return [
+      actionName,
+      async (params: Record<string, unknown>) => {
+        // oneShot guard — lock before fetch so double-click can't slip through.
+        if (oneShot) {
+          if (opts.lockedRef?.current) return;
+          if (opts.lockedRef) opts.lockedRef.current = true;
+          opts.setIsLocked?.(true);
         }
-        if (writeResponseTo) {
-          let body: unknown;
-          try {
-            body = await res.json();
-          } catch {
-            if (isLatest()) {
-              toast.error(`Action "${actionName}" returned an invalid response`);
-            }
+
+        const rollback = () => {
+          if (oneShot) {
+            if (opts.lockedRef) opts.lockedRef.current = false;
+            opts.setIsLocked?.(false);
+          }
+        };
+
+        const writeResponseTo =
+          typeof params._writeResponseTo === 'string' ? params._writeResponseTo : undefined;
+        const setPendingAt =
+          typeof params._setPendingAt === 'string' ? params._setPendingAt : undefined;
+
+        const postParams = Object.fromEntries(
+          Object.entries(params).filter(([k]) => k !== '_writeResponseTo' && k !== '_setPendingAt'),
+        );
+
+        const key = writeResponseTo ?? actionName;
+        const token = Symbol();
+        inFlightRef.current.set(key, token);
+        const isLatest = () => inFlightRef.current.get(key) === token;
+
+        if (setPendingAt) {
+          store.set(setPendingAt, true);
+        }
+
+        try {
+          const res = await fetch(`/api/actions/${actionName}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(postParams),
+          });
+          if (!res.ok) {
+            if (isLatest()) toast.error(`Action "${actionName}" failed (${res.status})`);
+            rollback();
             return;
           }
-          if (isLatest()) store.set(writeResponseTo, body);
+          if (responseEffect === 'navigate') {
+            const body = (await res.json().catch(() => null)) as { redirectTo?: string } | null;
+            if (!body?.redirectTo || typeof body.redirectTo !== 'string') {
+              toast.error(`Action "${actionName}" failed (no redirect URL)`);
+              rollback();
+              return;
+            }
+            if (!body.redirectTo.startsWith('/') || body.redirectTo.startsWith('//')) {
+              toast.error(`Action "${actionName}" failed (unexpected redirect)`);
+              rollback();
+              return;
+            }
+            navigate(body.redirectTo);
+            // No rollback — page is navigating away.
+            return;
+          }
+          // Default endpoint dispatch: write response body to state if requested.
+          if (writeResponseTo) {
+            let body: unknown;
+            try {
+              body = await res.json();
+            } catch {
+              if (isLatest()) {
+                toast.error(`Action "${actionName}" returned an invalid response`);
+              }
+              rollback();
+              return;
+            }
+            if (isLatest()) store.set(writeResponseTo, body);
+          }
+        } catch (err) {
+          if (isLatest()) toast.error(`Action "${actionName}" could not be reached`);
+          console.error('[RenderUICard] endpoint action failed', actionName, err);
+          rollback();
+        } finally {
+          if (setPendingAt && isLatest()) {
+            store.set(setPendingAt, false);
+          }
         }
-      } catch (err) {
-        if (isLatest()) toast.error(`Action "${actionName}" could not be reached`);
-        console.error('[RenderUICard] endpoint action failed', actionName, err);
-      } finally {
-        if (setPendingAt && isLatest()) {
-          store.set(setPendingAt, false);
-        }
-      }
-    },
-  ]);
+      },
+    ];
+  });
   return Object.fromEntries(entries);
 }
 
@@ -367,10 +415,14 @@ function RenderUICard({
   const handlers = useMemo(() => {
     // Build one endpoint handler per registered endpoint-mode action via the
     // exported factory.  See buildEndpointHandlers for the dispatch contract.
+    // Pass lockedRef + setIsLocked so oneShot endpoint actions (e.g. signInWith)
+    // can lock the card on press and roll back on failure.
     const endpointEntries = buildEndpointHandlers({
       store,
       inFlightRef,
       actionNames: endpointActionNames,
+      lockedRef,
+      setIsLocked,
     });
 
     return {

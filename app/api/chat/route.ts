@@ -18,7 +18,7 @@ import { getUserId } from '@/lib/auth';
 import { resolveActor } from '@/lib/budget/identity';
 import { type PreflightResult, preflight } from '@/lib/budget/preflight';
 import { headersToOverride } from '@/lib/byok/headers';
-import { isChipId } from '@/lib/chat/chips';
+import { checkChipGate, checkTurnstileGate } from '@/lib/chat/non-model-gates';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
@@ -30,7 +30,7 @@ import {
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
-import { verifyTrust } from '@/lib/turnstile/cookie';
+import { buildSignInSpec, writeServerCard } from '@/lib/json-render/server-card';
 import { createStreamOnFinish } from './on-finish';
 
 export const runtime = 'nodejs';
@@ -105,31 +105,14 @@ export async function POST(req: Request) {
 
   // ----- Anonymous-traffic gates (run BEFORE preflight so rejected requests
   // never spend DB or model budget) -----
-  if (!userId) {
-    // 1) Turnstile gate: anonymous must have a fresh pac_trust cookie.
-    const trustCookieValue = readCookie(cookieHeader, 'pac_trust');
-    const trustSecret = process.env.TRUST_COOKIE_SECRET ?? '';
-    const trusted =
-      trustCookieValue && trustSecret ? await verifyTrust(trustCookieValue, trustSecret) : null;
-    if (!trusted) {
-      return new Response(JSON.stringify({ error: 'turnstileRequired' }), {
-        status: 403,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
 
-    // 2) Chip-only gate: latest user message must carry a known chipId.
-    const lastUser = [...incoming].reverse().find((m) => m.role === 'user') as
-      | (UIMessage & { metadata?: { chipId?: unknown } })
-      | undefined;
-    const chipId = lastUser?.metadata?.chipId;
-    if (!isChipId(chipId)) {
-      return new Response(JSON.stringify({ error: 'chipRequired' }), {
-        status: 403,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-  }
+  // 1) Turnstile gate: anonymous visitors must have a fresh pac_trust cookie.
+  const earlyTurnstile = await checkTurnstileGate({ userId, cookieHeader });
+  if (earlyTurnstile) return earlyTurnstile;
+
+  // 2) Chip-only gate: latest user message must carry a known chipId.
+  const earlyChip = checkChipGate({ userId, incoming });
+  if (earlyChip) return earlyChip;
 
   let gate: PreflightResult;
   try {
@@ -141,6 +124,84 @@ export async function POST(req: Request) {
       { status: 503, headers: { 'content-type': 'application/json' } },
     );
   }
+  if (
+    !gate.allow &&
+    actor !== null &&
+    actor.actorKind === 'anonymous' &&
+    gate.reason === 'actorCapReached'
+  ) {
+    // Persist the wall turn so post-signin claim recovers the user's last prompt
+    // + the card they saw. Without this, the user signs in via the card and
+    // finds their conversation missing.
+    let wallSessionId: string;
+    let isNewWallSession = false;
+    if (body.sessionId) {
+      const session = await getSession(body.sessionId, userId);
+      if (!session) return new Response('Session not found', { status: 404 });
+      wallSessionId = session.id;
+    } else {
+      const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
+      const created = await createSession({ model: candidate, userId, anonymousId });
+      wallSessionId = created.id;
+      isNewWallSession = true;
+    }
+
+    // Reconcile so the user's new message is persisted exactly once (matches the
+    // normal stream's reconciliation logic at line ~190).
+    const dbCount = isNewWallSession ? 0 : await countMessages(wallSessionId, userId);
+    const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
+
+    // Build spec + toolCallId once so the persisted part exactly matches the
+    // streamed part.
+    const spec = buildSignInSpec();
+    const wallToolCallId = `injected-${crypto.randomUUID()}`;
+
+    const stream = createUIMessageStream({
+      execute: ({ writer }) => {
+        writer.write({
+          type: 'data-session',
+          data: { id: wallSessionId, isNew: isNewWallSession },
+          transient: true,
+        });
+        try {
+          writeServerCard(writer, spec, wallToolCallId);
+        } catch (err) {
+          console.error('[wall] writeServerCard failed', err);
+        }
+      },
+      originalMessages: incoming,
+      onFinish: async () => {
+        // Persist user's new message(s) + the wall card as an assistant message
+        // with a tool-renderUI part. claimAnonSessions re-parents on sign-in.
+        // Persistence errors after stream close can't surface to client; log.
+        try {
+          if (trimCount > 0) {
+            await trimTrailingMessages(wallSessionId, userId, trimCount);
+          }
+          await appendMessages(wallSessionId, userId, [
+            ...newUserMessages.map((m) => ({ role: m.role, parts: m.parts })),
+            {
+              role: 'assistant',
+              parts: [
+                {
+                  type: 'tool-renderUI',
+                  toolCallId: wallToolCallId,
+                  state: 'output-available',
+                  input: spec,
+                  output: spec,
+                },
+              ],
+            },
+          ]);
+          await touchSession(wallSessionId, userId);
+        } catch (err) {
+          console.error('[wall] persistence error in onFinish', err);
+        }
+      },
+    });
+    return createUIMessageStreamResponse({ stream });
+  }
+
   if (!gate.allow) {
     return new Response(JSON.stringify({ error: 'quota', reason: gate.reason }), {
       status: 429,

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { specSchema } from '@/lib/ai/tools/render-ui';
 import { signTrust } from '@/lib/turnstile/cookie';
 
 vi.mock('@/lib/auth', () => ({
@@ -18,8 +19,27 @@ vi.mock('@/lib/ai/providers', () => ({
   getModel: vi.fn(),
 }));
 
+vi.mock('@/lib/db/usage-ledger', () => ({
+  recordUsage: vi.fn(async () => {}),
+  sumActorSpendToday: vi.fn(async () => 0),
+  sumGlobalSpendToday: vi.fn(async () => 0),
+  sumGlobalSpendThisMonth: vi.fn(async () => 0),
+}));
+
+vi.mock('@/lib/db/queries', () => ({
+  getSession: vi.fn(async () => null),
+  createSession: vi.fn(async () => ({ id: 'wall-session-123' })),
+  countMessages: vi.fn(async () => 0),
+  appendMessages: vi.fn(async () => {}),
+  touchSession: vi.fn(async () => {}),
+  trimTrailingMessages: vi.fn(async () => {}),
+  renameSession: vi.fn(async () => {}),
+  addUsageToSession: vi.fn(async () => {}),
+}));
+
 import { getUserId } from '@/lib/auth';
 import { preflight } from '@/lib/budget/preflight';
+import { addUsageToSession, appendMessages, createSession } from '@/lib/db/queries';
 import { POST } from './route';
 
 async function freshTrustCookie(): Promise<string> {
@@ -63,9 +83,17 @@ describe('chat route preflight gating', () => {
     expect(res.headers.get('retry-after')).toBe('60');
   });
 
-  it('returns 429 with actorCapReached when an actor breaches its per-day cap', async () => {
+  it('returns 429 with actorCapReached for authenticated users who breach their cap', async () => {
+    vi.mocked(getUserId).mockResolvedValueOnce('user-fixture');
     vi.mocked(preflight).mockResolvedValueOnce({ allow: false, reason: 'actorCapReached' });
-    const res = await POST(await chatRequest());
+    const req = new Request('http://test/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
+      }),
+    });
+    const res = await POST(req);
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body).toEqual({ error: 'quota', reason: 'actorCapReached' });
@@ -136,5 +164,101 @@ describe('chat route preflight gating', () => {
     const res = await POST(req);
     // We expect to reach preflight, which is mocked to deny → 429.
     expect(res.status).toBe(429);
+  });
+});
+
+describe('chat route — anonymous quota-wall injects sign-in card', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('on anon + actorCapReached, returns 200 stream containing tool-renderUI + signInWith', async () => {
+    vi.mocked(preflight).mockResolvedValueOnce({ allow: false, reason: 'actorCapReached' });
+
+    const res = await POST(await chatRequest());
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('tool-input-available');
+    expect(body).toContain('renderUI');
+    expect(body).toContain('signInWith');
+    expect(body).toContain('"provider":"google"');
+    expect(body).toContain('"provider":"github"');
+
+    // Parse the SSE stream (each line is `data: <JSON>\n`) and find the
+    // tool-output-available frame. Assert its `output` is a valid spec.
+    const frames = body
+      .split('\n')
+      .filter((line) => line.startsWith('data: ') && line !== 'data: [DONE]')
+      .map((line) => {
+        try {
+          return JSON.parse(line.slice('data: '.length)) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean) as Record<string, unknown>[];
+
+    const outputFrame = frames.find((f) => f.type === 'tool-output-available');
+    expect(outputFrame).toBeDefined();
+    if (outputFrame) {
+      const result = specSchema.safeParse(outputFrame.output);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.root).toBe('card');
+      }
+    }
+  });
+
+  it('still returns 429 for anon + dailyCapReached (no card injection)', async () => {
+    vi.mocked(preflight).mockResolvedValueOnce({ allow: false, reason: 'dailyCapReached' });
+
+    const res = await POST(await chatRequest());
+    expect(res.status).toBe(429);
+  });
+
+  it('wall path persists the user message + card to a new session', async () => {
+    vi.mocked(preflight).mockResolvedValueOnce({ allow: false, reason: 'actorCapReached' });
+    vi.mocked(createSession).mockResolvedValueOnce({
+      id: 'wall-session-123',
+      model: 'gpt-4o',
+      userId: null,
+      anonymousId: 'anon-test',
+      title: 'New chat',
+      tokensIn: 0,
+      tokensOut: 0,
+      tokensCached: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const appendSpy = vi.mocked(appendMessages);
+
+    const res = await POST(await chatRequest());
+    expect(res.status).toBe(200);
+
+    // Stream should contain a data-session frame with the new session id.
+    const body = await res.text();
+    expect(body).toContain('"id":"wall-session-123"');
+    expect(body).toContain('"isNew":true');
+
+    // appendMessages should have been called with the wall session and content
+    // that includes a user message part + an assistant tool-renderUI part.
+    expect(appendSpy).toHaveBeenCalledOnce();
+    const [sessionId, , messages] = appendSpy.mock.calls[0];
+    expect(sessionId).toBe('wall-session-123');
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+    const assistantMsg = messages.find((m) => m.role === 'assistant');
+    expect(assistantMsg).toBeDefined();
+    const renderPart = (assistantMsg?.parts as Array<{ type: string }> | undefined)?.find(
+      (p) => p.type === 'tool-renderUI',
+    );
+    expect(renderPart).toBeDefined();
+
+    expect(addUsageToSession).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write to the usage ledger on the quota-wall branch', async () => {
+    vi.mocked(preflight).mockResolvedValueOnce({ allow: false, reason: 'actorCapReached' });
+
+    const { recordUsage } = await import('@/lib/db/usage-ledger');
+    await POST(await chatRequest());
+    expect(recordUsage).not.toHaveBeenCalled();
   });
 });

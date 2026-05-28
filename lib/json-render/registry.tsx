@@ -47,7 +47,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { TabsContent, TabsList, TabsTrigger, Tabs as UiTabs } from '@/components/ui/tabs';
-import { catalog, resolveActionMode } from '@/lib/json-render/catalog';
+import { ACTION_REGISTRY, catalog } from '@/lib/json-render/catalog';
 import { Chart } from './primitives/chart';
 import { KPI } from './primitives/kpi';
 import { Row } from './primitives/row';
@@ -80,20 +80,21 @@ export function useFormContext(): FormContextValue | null {
 }
 
 /**
- * Returns true when an element has at least one event binding whose action
- * resolves to model mode. Checks ALL `on.<event>` bindings, not just
- * `on.press`, so future event types are covered automatically.
+ * Returns true when an element has at least one event binding whose action has
+ * `oneShot: true` in the ACTION_REGISTRY. One-shot-bound elements become inert
+ * after a press fires — re-pressing would duplicate the action or re-trigger
+ * a destructive operation (e.g. OAuth navigation).
  *
- * Model-mode-bound elements become inert after a press fires: the user already
- * issued the turn; re-pressing would duplicate it. Local-mode (setState) buttons
- * on the same card are unaffected and keep working.
+ * Local-mode (setState) and endpoint-mode actions without oneShot (refresh-style)
+ * are unaffected — they remain pressable.
  */
-function isModelModeBound(el: Spec['elements'][string]): boolean {
+function isOneShotBound(el: Spec['elements'][string]): boolean {
   const onBindings = el.on as Record<string, { action?: string }> | undefined;
   if (!onBindings) return false;
-  return Object.values(onBindings).some(
-    (b) => b.action !== undefined && resolveActionMode(b.action) === 'model',
-  );
+  return Object.values(onBindings).some((b) => {
+    if (b.action === undefined) return false;
+    return ACTION_REGISTRY.get(b.action)?.oneShot === true;
+  });
 }
 
 /**
@@ -112,8 +113,8 @@ function isFormField(elType: string): boolean {
 
 /**
  * Returns a new spec where:
- *  - Every element with a model-mode event binding has `disabled: true`
- *    injected into its props.
+ *  - Every element with a one-shot-mode event binding (model OR redirect) has
+ *    `disabled: true` injected into its props.
  *  - Every form-field element (Input, Select, Checkbox) has `disabled: true`
  *    injected — when the card is locked they should not accept further input
  *    because the submitted state has already been sent to the model.
@@ -127,7 +128,7 @@ export function applyLockToSpec(spec: Spec, isLocked: boolean): Spec {
   if (!isLocked) return spec;
   const newElements: Record<string, Spec['elements'][string]> = {};
   for (const [key, el] of Object.entries(spec.elements)) {
-    if (isModelModeBound(el) || isFormField(el.type)) {
+    if (isOneShotBound(el) || isFormField(el.type)) {
       newElements[key] = {
         ...el,
         props: { ...(el.props as Record<string, unknown>), disabled: true },

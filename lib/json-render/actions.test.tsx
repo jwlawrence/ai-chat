@@ -537,9 +537,7 @@ describe('Phase 3: applyLockToSpec + model-mode lock display', () => {
       },
     };
     const result = applyLockToSpec(noActionSpec, true);
-    expect(
-      (result.elements['plain-btn'].props as { disabled?: boolean }).disabled,
-    ).toBeUndefined();
+    expect((result.elements['plain-btn'].props as { disabled?: boolean }).disabled).toBeUndefined();
   });
 
   it('renders model-mode Buttons as disabled when the locked spec is mounted', () => {
@@ -578,9 +576,7 @@ describe('applyLockToSpec — broadened predicate (Fix #7 + #5)', () => {
     };
     const result = applyLockToSpec(mixedSpec, true);
     // local-mode button must NOT be disabled
-    expect(
-      (result.elements['local-btn'].props as { disabled?: boolean }).disabled,
-    ).toBeUndefined();
+    expect((result.elements['local-btn'].props as { disabled?: boolean }).disabled).toBeUndefined();
     // model-mode button MUST be disabled
     expect((result.elements['model-btn'].props as { disabled?: boolean }).disabled).toBe(true);
   });
@@ -663,5 +659,66 @@ describe('applyLockToSpec — broadened predicate (Fix #7 + #5)', () => {
     expect((result.elements['name-input'].props as { disabled?: boolean }).disabled).toBe(true);
     expect((result.elements['agree-check'].props as { disabled?: boolean }).disabled).toBe(true);
     expect((result.elements['submit-btn'].props as { disabled?: boolean }).disabled).toBe(true);
+  });
+
+  it('locks oneShot-action buttons bound to signInWith (Phase 6 one-shot-bound predicate)', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: { type: 'Card', props: {}, children: ['signin-btn'] },
+        'signin-btn': {
+          type: 'Button',
+          props: { label: 'Continue with Google', variant: 'primary' },
+          on: { press: { action: 'signInWith', params: { provider: 'google' } } },
+          children: [],
+        },
+      },
+    };
+    const locked = applyLockToSpec(spec, true);
+    expect((locked.elements['signin-btn'].props as { disabled?: boolean }).disabled).toBe(true);
+  });
+
+  it('locks model + oneShot-endpoint buttons but leaves local + non-oneShot-endpoint unlocked (Phase 6)', () => {
+    const spec: Spec = {
+      root: 'card',
+      elements: {
+        card: {
+          type: 'Card',
+          props: {},
+          children: ['local-btn', 'endpoint-btn', 'model-btn', 'redirect-btn'],
+        },
+        'local-btn': {
+          type: 'Button',
+          props: { label: 'Toggle' },
+          on: { press: { action: 'setState', params: { statePath: '/x', value: true } } },
+          children: [],
+        },
+        'endpoint-btn': {
+          type: 'Button',
+          props: { label: 'Refresh' },
+          on: { press: { action: 'refreshData' } },
+          children: [],
+        },
+        'model-btn': {
+          type: 'Button',
+          props: { label: 'Continue' },
+          on: { press: { action: 'sendToModel', params: { label: 'Continue' } } },
+          children: [],
+        },
+        'redirect-btn': {
+          type: 'Button',
+          props: { label: 'Sign in' },
+          on: { press: { action: 'signInWith', params: { provider: 'google' } } },
+          children: [],
+        },
+      },
+    };
+    const locked = applyLockToSpec(spec, true);
+    expect((locked.elements['local-btn'].props as { disabled?: boolean }).disabled).toBeUndefined();
+    expect(
+      (locked.elements['endpoint-btn'].props as { disabled?: boolean }).disabled,
+    ).toBeUndefined();
+    expect((locked.elements['model-btn'].props as { disabled?: boolean }).disabled).toBe(true);
+    expect((locked.elements['redirect-btn'].props as { disabled?: boolean }).disabled).toBe(true);
   });
 });

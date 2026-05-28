@@ -3,6 +3,7 @@ import {
   sumGlobalSpendThisMonth,
   sumGlobalSpendToday,
 } from '@/lib/db/usage-ledger';
+import { cacheDeny, getCachedDeny } from './cap-cache';
 import type { Actor } from './identity';
 
 function parseCapUsd(name: string, defaultUsd: number): number {
@@ -43,7 +44,18 @@ export interface PreflightInput {
  * at preflight time. See Phase 3 review for trade-offs.
  */
 export async function preflight(input: PreflightInput): Promise<PreflightResult> {
+  const result = await preflightInner(input);
+  if (input.actor !== null) cacheDeny(input.actor.actorId, result);
+  return result;
+}
+
+async function preflightInner(input: PreflightInput): Promise<PreflightResult> {
   if (input.byok) return { allow: true };
+
+  if (input.actor !== null) {
+    const cached = getCachedDeny(input.actor.actorId);
+    if (cached) return cached;
+  }
 
   const [globalDaily, globalMonthly] = await Promise.all([
     sumGlobalSpendToday(),

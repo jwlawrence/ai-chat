@@ -273,8 +273,9 @@ describe('catalogPrompt', () => {
     // auto-cache prefix). Phase 1 produced ~3.6 KB; Phase 2 added local-action docs (~8 KB);
     // Phase 3 added model-mode docs (~10 KB); Phase 4 added endpoint section
     // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB);
-    // Phase 6 added annotated-list pattern (~20.3 KB actual).
-    // Bound = actual (~20_323) + 2_000 so a silent doubling would trip this guard.
+    // Phase 6/B1 added annotated-list pattern (~20.3 KB actual);
+    // Phase 6 login-as: signInWith moved into endpoint section (redirect section removed).
+    // Bound = 22_400 — a silent doubling would trip this guard.
     expect(catalogPrompt.length).toBeLessThan(22_400);
   });
 });
@@ -591,9 +592,9 @@ describe('catalogPrompt — Phase 6/B1: annotated list pattern', () => {
   });
 
   it('catalogPrompt size is within expected bound after Phase 6 additions', () => {
-    // Actual size after Phase 6 annotated-list addition: ~20_323 bytes.
-    // Bound = actual + 2_000 to catch accidental bloat.
-    expect(catalogPrompt.length).toBeGreaterThan(19_000);
+    // signInWith folded into endpoint section; redirect section removed.
+    // Lower bound relaxed to 17_000 since the prompt is somewhat smaller without redirect section.
+    expect(catalogPrompt.length).toBeGreaterThan(17_000);
     expect(catalogPrompt.length).toBeLessThan(22_400);
   });
 });
@@ -618,5 +619,35 @@ describe('catalogPrompt — Phase 5: form submission section', () => {
 
   it('catalogPrompt still fits within the expected size envelope after Phase 5 additions', () => {
     expect(catalogPrompt.length).toBeLessThan(22_400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6: signInWith action registration
+// ---------------------------------------------------------------------------
+
+describe('ACTION_REGISTRY — Phase 6: signInWith', () => {
+  it('resolves to endpoint mode (oneShot + navigate responseEffect)', () => {
+    expect(resolveActionMode('signInWith')).toBe('endpoint');
+  });
+
+  it('accepts google provider', () => {
+    const def = ACTION_REGISTRY.get('signInWith');
+    expect(def?.params.safeParse({ provider: 'google' }).success).toBe(true);
+  });
+
+  it('accepts github provider', () => {
+    const def = ACTION_REGISTRY.get('signInWith');
+    expect(def?.params.safeParse({ provider: 'github' }).success).toBe(true);
+  });
+
+  it('rejects linkedin provider (not wired in NextAuth config)', () => {
+    const def = ACTION_REGISTRY.get('signInWith');
+    expect(def?.params.safeParse({ provider: 'linkedin' }).success).toBe(false);
+  });
+
+  it('rejects missing provider', () => {
+    const def = ACTION_REGISTRY.get('signInWith');
+    expect(def?.params.safeParse({}).success).toBe(false);
   });
 });

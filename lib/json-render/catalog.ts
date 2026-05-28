@@ -265,6 +265,13 @@ interface ActionDef {
   mode: ActionMode;
   description: string;
   params: z.ZodTypeAny;
+  /** Lock the card after this action fires. setState/refreshData/fetchWeather are
+   *  idempotent and don't set this; sendToModel/submitForm/signInWith do. */
+  oneShot?: boolean;
+  /** Optional client-side response effect for endpoint actions. When 'navigate',
+   *  the dispatcher reads `redirectTo` from the response body and calls
+   *  window.location.assign(redirectTo) after same-origin URL validation. */
+  responseEffect?: 'navigate';
 }
 
 /**
@@ -288,6 +295,7 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     'sendToModel',
     {
       mode: 'model',
+      oneShot: true,
       description:
         'Send a user turn back to the model with this label + optional message/data. Model responds normally.',
       params: z.object({
@@ -304,6 +312,7 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
     'submitForm',
     {
       mode: 'model',
+      oneShot: true,
       description:
         'Submit a form: gathers state at /<formName>/* and sends to the model with a transcript chip. Card locks on press (same as sendToModel).',
       params: z.object({
@@ -335,6 +344,19 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
       }),
     },
   ],
+  [
+    'signInWith',
+    {
+      mode: 'endpoint',
+      oneShot: true,
+      responseEffect: 'navigate',
+      description:
+        'Initiate OAuth sign-in with the named provider. POSTs to /api/actions/signInWith; server returns { redirectTo }; client navigates via window.location.assign after same-origin URL validation. Card locks on press (navigation is destructive).',
+      params: z.object({
+        provider: z.enum(['google', 'github']).describe('OAuth provider id'),
+      }),
+    },
+  ],
 ]);
 
 /**
@@ -342,7 +364,8 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
  *
  * - `'local'`    — handled client-side; model never sees it.
  * - `'model'`    — synthesizes a user turn and sends to the model.
- * - `'endpoint'` — calls a server endpoint (Phase 4, not yet wired).
+ * - `'endpoint'` — POSTs to a server endpoint. May carry `oneShot` (locks card on press)
+ *                  and `responseEffect: 'navigate'` (client navigates to redirectTo from response).
  * - `undefined`  — action name is not registered; callers decide how to handle.
  *
  * This is the single source of truth consulted by:
@@ -713,7 +736,7 @@ function buildCatalogPrompt(): string {
     ...modeSection(
       'endpoint',
       'Endpoint-mode actions (backend call, no model involvement)',
-      'Endpoint-mode actions POST to a backend route when the button is pressed. The model never sees the press and the card stays interactive — the user can press again (useful for refetch-style operations). Use endpoint-mode for refresh, save, mark-done, and delete-style operations where no model response is needed.',
+      'Endpoint-mode actions POST to a backend route when the button is pressed. The model never sees the press. Most endpoint actions keep the card interactive (useful for refetch-style operations). Some endpoint actions carry `oneShot: true` — once pressed, ALL one-shot buttons on that card are disabled (the action is destructive or non-repeatable). Some also carry `responseEffect: "navigate"` — after a 2xx response, the client reads `redirectTo` from the body and calls window.location.assign(redirectTo) after same-origin URL validation.',
     ),
   );
 

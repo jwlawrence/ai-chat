@@ -153,7 +153,7 @@ describe('POST /api/actions/[action] — rejected actions', () => {
     expect(json).toEqual({ error: 'unknown action' });
   });
 
-  it('returns 404 for sendToModel (registered but mode is "model", not "endpoint")', async () => {
+  it('returns 404 for sendToModel (registered but mode is "model", not allowed by ALLOWED_MODES)', async () => {
     const res = await POST(
       new Request('http://localhost/api/actions/sendToModel', {
         method: 'POST',
@@ -167,7 +167,7 @@ describe('POST /api/actions/[action] — rejected actions', () => {
     expect(json).toEqual({ error: 'unknown action' });
   });
 
-  it('returns 404 for setState (registered but mode is "local", not "endpoint")', async () => {
+  it('returns 404 for setState (registered but mode is "local", not allowed by ALLOWED_MODES)', async () => {
     const res = await POST(
       new Request('http://localhost/api/actions/setState', {
         method: 'POST',
@@ -179,5 +179,67 @@ describe('POST /api/actions/[action] — rejected actions', () => {
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json).toEqual({ error: 'unknown action' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// signInWith — redirect-mode action
+// ---------------------------------------------------------------------------
+
+describe('POST /api/actions/[action] — signInWith', () => {
+  it('returns 200 { redirectTo: "/api/auth/signin/google" } for provider: "google"', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ redirectTo: '/api/auth/signin/google' });
+  });
+
+  it('returns 200 { redirectTo: "/api/auth/signin/github" } for provider: "github"', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'github' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({ redirectTo: '/api/auth/signin/github' });
+  });
+
+  it('returns 400 for provider: "linkedin" (Zod enum rejects unknown provider)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'linkedin' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('invalid params');
+  });
+
+  it('returns 400 when provider is omitted (required field)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe('invalid params');
   });
 });
