@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from 'swr';
 import { DEFAULT_MODEL, type ModelId } from '@/lib/ai/models';
+import { recordToHeaders } from '@/lib/byok/headers';
+import { loadByok } from '@/lib/byok/storage';
 import type { ChipPrompt } from '@/lib/chat/chips';
 import { AnonTurnstileGate } from './anon-gate';
 import { ChipDeck } from './chip-deck';
@@ -47,13 +49,19 @@ export function Chat({
     () =>
       new DefaultChatTransport<UIMessage>({
         api: '/api/chat',
-        prepareSendMessagesRequest: ({ messages }) => ({
-          body: {
-            sessionId: sessionIdRef.current,
-            model: modelRef.current,
-            messages,
-          },
-        }),
+        prepareSendMessagesRequest: ({ messages }) => {
+          const byok = loadByok();
+          const headers: Record<string, string> = {};
+          if (byok) Object.assign(headers, recordToHeaders(byok));
+          return {
+            body: {
+              sessionId: sessionIdRef.current,
+              model: modelRef.current,
+              messages,
+            },
+            headers,
+          };
+        },
       }),
     [],
   );

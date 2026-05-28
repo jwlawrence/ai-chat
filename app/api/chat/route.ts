@@ -8,7 +8,7 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { DEFAULT_MODEL, isModelId, type ModelId } from '@/lib/ai/models';
-import { getModel } from '@/lib/ai/providers';
+import { getModel, type ProviderOverride } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { generateTitle } from '@/lib/ai/title';
 import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
@@ -17,6 +17,7 @@ import { verifyAnonCookie } from '@/lib/anon/cookie';
 import { getUserId } from '@/lib/auth';
 import { resolveActor } from '@/lib/budget/identity';
 import { type PreflightResult, preflight } from '@/lib/budget/preflight';
+import { headersToOverride } from '@/lib/byok/headers';
 import { isChipId } from '@/lib/chat/chips';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
@@ -92,7 +93,11 @@ export async function POST(req: Request) {
   const headerAnon = headerAnonRaw && headerAnonRaw.length <= 128 ? headerAnonRaw : null;
   const anonymousId = userId ? null : (verifiedAnonId ?? headerAnon);
   const actor = resolveActor({ userId, anonymousId });
-  const byok = false; // wired up in Phase 5
+
+  const byokOverride: ProviderOverride | undefined = userId
+    ? headersToOverride(req.headers)
+    : undefined;
+  const byok = byokOverride !== undefined;
 
   // Pin the request to a single UTC day so the preflight read and postflight
   // write agree even if the stream completes after midnight.
@@ -172,6 +177,22 @@ export async function POST(req: Request) {
   // The view sent to the model: sliding window of the most recent messages.
   const windowed = incoming.slice(-CONTEXT_WINDOW);
 
+  // Resolve the model instance before entering the stream so a missing BYOK
+  // deployment surfaces as a clean 400 rather than an opaque stream abort.
+  let modelInstance: ReturnType<typeof getModel>;
+  try {
+    modelInstance = getModel(model, byokOverride);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.startsWith('BYOK override is missing a deployment name')) {
+      return new Response(JSON.stringify({ error: 'byokModelMissing', model }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    throw err;
+  }
+
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       // Tell the client the session id immediately. The client uses this to
@@ -183,7 +204,7 @@ export async function POST(req: Request) {
       });
 
       const result = streamText({
-        model: getModel(model),
+        model: modelInstance,
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
         tools,
@@ -252,7 +273,7 @@ export async function POST(req: Request) {
       // First turn → generate a title.
       if (isNewSession) {
         try {
-          const title = await generateTitle(finalMessages);
+          const title = await generateTitle(finalMessages, byokOverride);
           await renameSession(sessionId, title, userId);
         } catch (err) {
           // Non-fatal: keep the default 'New chat'.
