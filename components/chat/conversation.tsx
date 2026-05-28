@@ -6,7 +6,7 @@ import { createStateStore } from '@json-render/core';
 import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { UIMessage } from 'ai';
 import { Globe, MousePointerClick, Sparkles } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Conversation,
@@ -254,6 +254,54 @@ export function buildSubmitFormHandler(opts: {
     }
   };
 }
+
+// ---------------------------------------------------------------------------
+// RenderUIPart — per-message-part wrapper that parses the tool output once
+// and forwards a STABLE spec reference into RenderUICard.
+//
+// Why this exists: ChatConversation re-renders on every useChat update (token
+// streams, status changes, sidebar mutations). The tool-renderUI output
+// previously ran `specSchema.safeParse(p.output)` inline on every render, and
+// Zod returns a new object identity each call. That fresh `spec` reference
+// busted RenderUICard's `effectiveSpec = useMemo(..., [spec, isLocked])`,
+// which busted Renderer's internal spec subscriptions, which scheduled
+// another render — an infinite loop tripped on Form/KPI specs (more
+// state-bound subscribers = quicker trip; pure Chart specs survived).
+//
+// Memoizing the safeParse keyed on `partOutput` identity caches the parsed
+// Spec across renders. `React.memo` on the wrapper prevents the inner
+// RenderUICard from re-rendering when nothing meaningful changed.
+// ---------------------------------------------------------------------------
+
+const RenderUIPart = memo(function RenderUIPart({
+  partOutput,
+  sendMessage,
+  initiallyLocked,
+}: {
+  partOutput: unknown;
+  sendMessage: SendMessage;
+  initiallyLocked: boolean;
+}) {
+  const parsed = useMemo(() => specSchema.safeParse(partOutput), [partOutput]);
+  if (!parsed.success) {
+    return <div className="text-sm text-destructive">Failed to render UI: invalid spec.</div>;
+  }
+  const spec = parsed.data as Spec;
+  // initialState is consumed once by RenderUICard's `useMemo(() => createStateStore(...), [])`
+  // on mount, so its identity post-mount is irrelevant — stripSlashKeys returning a fresh
+  // object each render is fine.
+  const initialState = stripSlashKeys(spec?.state ?? undefined);
+  return (
+    <div data-spec-id={spec?.root}>
+      <RenderUICard
+        spec={spec}
+        initialState={initialState}
+        sendMessage={sendMessage}
+        initiallyLocked={initiallyLocked}
+      />
+    </div>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // RenderUICard — per-card wrapper that owns lock state + model-mode dispatch
@@ -562,39 +610,21 @@ export function ChatConversation({
                         );
                       }
                       if (p.type === 'tool-renderUI' && p.state === 'output-available') {
-                        // Fix #7: Runtime safeParse against specSchema before casting to Spec.
-                        // An invalid/corrupt output (e.g. from an older model version) renders
-                        // an inline error callout instead of crashing the message bubble.
-                        const parsed = specSchema.safeParse(p.output);
-                        if (!parsed.success) {
-                          return (
-                            <div key={key} className="text-sm text-destructive">
-                              Failed to render UI: invalid spec.
-                            </div>
-                          );
-                        }
-                        const spec: Spec = parsed.data as Spec;
-                        // Pass the spec's optional `state` field as initialState so
-                        // that local-mode actions (e.g. setState) have the correct
-                        // starting values. JSONUIProvider's ActionProvider handles the
-                        // built-in `setState` action automatically — no custom handlers
-                        // map is needed for local-mode presses.
-                        //
-                        // Fix #11 (part 2): stripSlashKeys normalises any persisted
-                        // specs from before the server-side slash-rejection landed.
-                        const initialState = stripSlashKeys(spec?.state ?? undefined);
                         // Re-derive lock state from the transcript: if any model-mode
                         // data-press chip in this session references this card's root,
                         // the card was already used. The in-memory lock resets across
                         // reloads but the chip persists, so this gives us reload-
                         // survivable lock state without adding a new persistence channel.
-                        // lockedRoots is computed once per render above (Fix #3 perf).
-                        const initiallyLocked = lockedRoots.has(spec.root);
+                        // Computed cheaply here (one Set.has) so we don't need to
+                        // re-parse the spec just to peek at .root — RenderUIPart owns
+                        // the actual parse/render. The cost is reading spec.root from
+                        // the output twice, but that's an object property read.
+                        const root = (p.output as { root?: string } | undefined)?.root;
+                        const initiallyLocked = root ? lockedRoots.has(root) : false;
                         return (
-                          <div key={key} data-spec-id={spec?.root}>
-                            <RenderUICard
-                              spec={spec}
-                              initialState={initialState}
+                          <div key={key}>
+                            <RenderUIPart
+                              partOutput={p.output}
                               sendMessage={sendMessage}
                               initiallyLocked={initiallyLocked}
                             />
