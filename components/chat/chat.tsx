@@ -1,11 +1,15 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
 import type { UIMessage } from 'ai';
+import { DefaultChatTransport } from 'ai';
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from 'swr';
 import { DEFAULT_MODEL, type ModelId } from '@/lib/ai/models';
+import type { ChipPrompt } from '@/lib/chat/chips';
+import { AnonTurnstileGate } from './anon-gate';
+import { ChipDeck } from './chip-deck';
 import { Composer } from './composer';
 import { ChatConversation } from './conversation';
 import { ErrorBubble } from './error-bubble';
@@ -14,9 +18,17 @@ type Props = {
   sessionId?: string;
   initialModel?: ModelId;
   initialMessages?: UIMessage[];
+  isAnonymous?: boolean;
+  hasTrust?: boolean;
 };
 
-export function Chat({ sessionId: initialSessionId, initialModel, initialMessages }: Props) {
+export function Chat({
+  sessionId: initialSessionId,
+  initialModel,
+  initialMessages,
+  isAnonymous = false,
+  hasTrust = false,
+}: Props) {
   const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId);
   const [model, setModel] = useState<ModelId>(initialModel ?? DEFAULT_MODEL);
 
@@ -73,6 +85,14 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
   const modelLocked = messages.length > 0;
   const showError = status === 'error' && !!error;
 
+  function handleChipSelect(chip: ChipPrompt) {
+    sendMessage({
+      role: 'user',
+      parts: [{ type: 'text', text: chip.prompt }],
+      metadata: { chipId: chip.id },
+    } as UIMessage & { metadata: { chipId: string } });
+  }
+
   function handleRetry() {
     // Server-side reconcile handles trim/append based on incoming-vs-DB counts,
     // so a plain regenerate() works for both error-retry and user-initiated regenerate.
@@ -84,8 +104,13 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
       <ChatConversation
         messages={messages}
         status={status}
-        onSuggest={(text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })}
+        onSuggest={
+          isAnonymous
+            ? undefined
+            : (text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
+        }
         sendMessage={sendMessage}
+        isAnonymous={isAnonymous}
       />
       {showError ? (
         <div className="mx-auto w-full max-w-3xl px-4 pb-2">
@@ -93,28 +118,51 @@ export function Chat({ sessionId: initialSessionId, initialModel, initialMessage
         </div>
       ) : null}
       <div className="border-t bg-background/95 px-4 py-3">
-        <Composer
-          status={status}
-          model={model}
-          modelLocked={modelLocked}
-          sessionId={sessionId}
-          onModelChange={setModel}
-          onSubmit={({ text, files }) =>
-            sendMessage({
-              role: 'user',
-              parts: [
-                ...(text ? [{ type: 'text' as const, text }] : []),
-                ...files.map((f) => ({
-                  type: 'file' as const,
-                  mediaType: f.mediaType,
-                  filename: f.filename,
-                  url: f.url,
-                })),
-              ],
-            })
-          }
-          onStop={stop}
-        />
+        {isAnonymous ? (
+          !hasTrust ? (
+            <AnonTurnstileGate siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''} />
+          ) : (
+            <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3">
+              <ChipDeck
+                onSelect={handleChipSelect}
+                disabled={status === 'streaming' || status === 'submitted'}
+              />
+              <p className="text-center text-muted-foreground text-xs">
+                Free typing is locked for anonymous visitors.{' '}
+                <Link
+                  href="/api/auth/signin"
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  Sign in
+                </Link>{' '}
+                to chat freely.
+              </p>
+            </div>
+          )
+        ) : (
+          <Composer
+            status={status}
+            model={model}
+            modelLocked={modelLocked}
+            sessionId={sessionId}
+            onModelChange={setModel}
+            onSubmit={({ text, files }) =>
+              sendMessage({
+                role: 'user',
+                parts: [
+                  ...(text ? [{ type: 'text' as const, text }] : []),
+                  ...files.map((f) => ({
+                    type: 'file' as const,
+                    mediaType: f.mediaType,
+                    filename: f.filename,
+                    url: f.url,
+                  })),
+                ],
+              })
+            }
+            onStop={stop}
+          />
+        )}
       </div>
     </div>
   );

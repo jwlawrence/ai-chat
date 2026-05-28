@@ -14,6 +14,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { Button } from '@/components/ui/button';
 import { MODEL_IDS, type ModelId } from '@/lib/ai/models';
+import { cn } from '@/lib/utils';
 import { ModelDropdown } from './model-dropdown';
 import { UsageMeter } from './usage-meter';
 
@@ -75,6 +76,7 @@ export function Composer({
   onModelChange,
   onSubmit,
   onStop,
+  disabled,
 }: {
   status: 'ready' | 'streaming' | 'submitted' | 'error';
   model: ModelId;
@@ -83,11 +85,13 @@ export function Composer({
   onModelChange: (m: ModelId) => void;
   onSubmit: (message: PromptInputMessage) => void;
   onStop: () => void;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState('');
   const isBusy = status === 'streaming' || status === 'submitted';
 
   function handleSubmit(message: PromptInputMessage) {
+    if (disabled) return;
     const t = (message.text ?? text).trim();
     if (!t && message.files.length === 0) return;
     if (isBusy) return;
@@ -101,19 +105,24 @@ export function Composer({
       accept="image/*"
       multiple
       maxFileSize={MAX_FILE_SIZE}
-      className="mx-auto w-full max-w-3xl"
+      className={cn('mx-auto w-full max-w-3xl', disabled && 'pointer-events-none opacity-60')}
     >
       <AttachmentChips />
       <PromptInputTextarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Send a message..."
+        placeholder={disabled ? 'Sign in to chat freely' : 'Send a message...'}
+        disabled={disabled}
       />
       <PromptInputFooter>
         <PromptInputTools>
           <AttachButton />
           {SHOW_MODEL_PICKER ? (
-            <ModelDropdown value={model} onChange={onModelChange} disabled={modelLocked} />
+            <ModelDropdown
+              value={model}
+              onChange={onModelChange}
+              disabled={modelLocked || !!disabled}
+            />
           ) : null}
           <UsageMeter sessionId={sessionId} model={model} />
         </PromptInputTools>
@@ -122,7 +131,7 @@ export function Composer({
             <Square className="size-4" />
           </Button>
         ) : (
-          <SubmitButton disabledByText={!text.trim()} />
+          <SubmitButton disabledByText={!text.trim() || !!disabled} />
         )}
       </PromptInputFooter>
     </PromptInput>

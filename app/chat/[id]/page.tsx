@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { Chat } from '@/components/chat/chat';
 import { DEFAULT_MODEL, isModelId } from '@/lib/ai/models';
 import { getUserId } from '@/lib/auth';
+import { resolveAnonState } from '@/lib/chat/anon-state';
 import { getMessages, getSession } from '@/lib/db/queries';
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,5 +12,14 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   if (!session) notFound();
   const model = isModelId(session.model) ? session.model : DEFAULT_MODEL;
   const initialMessages = await getMessages(id, userId);
-  return <Chat sessionId={id} initialModel={model} initialMessages={initialMessages} />;
+  const { isAnonymous, hasTrust } = await resolveAnonState();
+  return (
+    <Chat
+      sessionId={id}
+      initialModel={model}
+      initialMessages={initialMessages}
+      isAnonymous={isAnonymous}
+      hasTrust={hasTrust}
+    />
+  );
 }

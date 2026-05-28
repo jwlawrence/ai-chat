@@ -14,9 +14,11 @@ export async function listSessions(userId: string | null): Promise<Session[]> {
     .orderBy(desc(chatSessions.updatedAt));
 }
 
-// Phase-4 TODO: `userId: string | null` won't be sufficient once anonymous
-// sessions can be claimed across sign-in; the signature needs to also accept
-// `anonymousId` and OR them in the WHERE clause. Touches every callsite below.
+// Phase-4 follow-up: ownership scope is still `userId` only across these
+// session-touching queries. Anonymous-scoped reads (e.g., listing sessions
+// for a pre-signin visitor) will need `anonymousId` ORed into the WHERE
+// clause. `claimAnonymousSessions` already handles the transition mutation;
+// the reads are the remaining work.
 export async function getSession(id: string, userId: string | null): Promise<Session | null> {
   const rows = await db
     .select()
@@ -34,10 +36,15 @@ export async function getSession(id: string, userId: string | null): Promise<Ses
 export async function createSession(input: {
   model: string;
   userId?: string | null;
+  anonymousId?: string | null;
 }): Promise<Session> {
   const [row] = await db
     .insert(chatSessions)
-    .values({ model: input.model, userId: input.userId ?? null })
+    .values({
+      model: input.model,
+      userId: input.userId ?? null,
+      anonymousId: input.anonymousId ?? null,
+    })
     .returning();
   return row;
 }
@@ -175,6 +182,25 @@ export async function countMessages(sessionId: string, userId: string | null): P
     .from(messages)
     .where(eq(messages.sessionId, sessionId));
   return row?.value ?? 0;
+}
+
+/**
+ * Re-parent every anonymous session matching `anonymousId` to `userId`.
+ * Called from the NextAuth signIn event when an anonymous visitor signs in.
+ *
+ * Only sessions with NULL user_id are claimed — we never overwrite an
+ * existing owner, even if a session row somehow has both anonymous_id and
+ * user_id (defensive: shouldn't happen, but if it does, the existing user
+ * wins).
+ */
+export async function claimAnonymousSessions(input: {
+  anonymousId: string;
+  userId: string;
+}): Promise<void> {
+  await db
+    .update(chatSessions)
+    .set({ userId: input.userId })
+    .where(and(eq(chatSessions.anonymousId, input.anonymousId), isNull(chatSessions.userId)));
 }
 
 // Deletes the `n` most-recently-created messages in the session. No-op if n <= 0.

@@ -466,31 +466,43 @@ const SUGGESTIONS = [
   'Brainstorm names for a new project',
 ];
 
-function EmptyState({ onSuggest }: { onSuggest?: (text: string) => void }) {
+function EmptyState({
+  onSuggest,
+  isAnonymous = false,
+}: {
+  onSuggest?: (text: string) => void;
+  isAnonymous?: boolean;
+}) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-8 px-4 py-12 text-center">
       <div className="flex flex-col items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-full bg-card ring-1 ring-border">
           <Sparkles className="size-5 text-muted-foreground" />
         </div>
-        <h1 className="font-semibold text-2xl tracking-tight">How can I help today?</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">
+          {isAnonymous ? 'A small showcase' : 'How can I help today?'}
+        </h1>
         <p className="max-w-md text-muted-foreground text-sm">
-          Start a new conversation by typing below, or pick one of these to get going.
+          {isAnonymous
+            ? 'Pick a starter below — each one shows how the model renders a different kind of UI.'
+            : 'Start a new conversation by typing below, or pick one of these to get going.'}
         </p>
       </div>
-      <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onSuggest?.(s)}
-            disabled={!onSuggest}
-            className="rounded-lg border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      {isAnonymous ? null : (
+        <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onSuggest?.(s)}
+              disabled={!onSuggest}
+              className="rounded-lg border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -500,11 +512,13 @@ export function ChatConversation({
   status,
   onSuggest,
   sendMessage,
+  isAnonymous = false,
 }: {
   messages: UIMessage[];
   status: 'ready' | 'streaming' | 'submitted' | 'error';
   onSuggest?: (text: string) => void;
   sendMessage: SendMessage;
+  isAnonymous?: boolean;
 }) {
   // Fix #3 (perf): derive the set of locked root ids once outside the message-
   // map loop. Previously hasPressForRoot() was called per renderUI card inside
@@ -544,7 +558,7 @@ export function ChatConversation({
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className={isEmpty ? 'h-full' : 'mx-auto max-w-3xl'}>
         {isEmpty ? (
-          <EmptyState onSuggest={onSuggest} />
+          <EmptyState onSuggest={onSuggest} isAnonymous={isAnonymous} />
         ) : (
           <>
             {messages.map((m) => {

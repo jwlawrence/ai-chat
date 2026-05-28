@@ -1,17 +1,18 @@
 'use client';
 
-import Link from 'next/link';
 import { Menu, MessageSquarePlus } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { AccountSection, type SidebarUser } from './account-section';
 import { SidebarList } from './sidebar-list';
 
 function Header() {
   return (
     <div className="flex items-center justify-between border-b px-3 py-2">
-      <Link href="/chat" className="text-sm font-semibold">
+      <Link href="/chat" className="font-semibold text-sm">
         AI Chat
       </Link>
       <ThemeToggle />
@@ -29,7 +30,11 @@ function NewChatButton({ onClick }: { onClick?: () => void }) {
   );
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  user: SidebarUser | null;
+}
+
+export function Sidebar({ user }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -41,14 +46,15 @@ export function Sidebar() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <SidebarList />
         </div>
+        <AccountSection user={user} />
       </aside>
       {/* Mobile trigger */}
-      <div className="absolute left-2 top-2 z-20 md:hidden">
+      <div className="absolute top-2 left-2 z-20 md:hidden">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger render={<Button variant="ghost" size="icon" aria-label="Open sidebar" />}>
             <Menu className="size-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="w-72 p-0">
+          <SheetContent side="left" className="flex w-72 flex-col p-0">
             <SheetHeader className="border-b px-3 py-2">
               <SheetTitle>AI Chat</SheetTitle>
             </SheetHeader>
@@ -56,6 +62,7 @@ export function Sidebar() {
             <div className="min-h-0 flex-1 overflow-y-auto">
               <SidebarList />
             </div>
+            <AccountSection user={user} />
           </SheetContent>
         </Sheet>
       </div>

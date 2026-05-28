@@ -13,9 +13,11 @@ import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { generateTitle } from '@/lib/ai/title';
 import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
 import { webSearch } from '@/lib/ai/tools/web-search';
+import { verifyAnonCookie } from '@/lib/anon/cookie';
 import { getUserId } from '@/lib/auth';
 import { resolveActor } from '@/lib/budget/identity';
 import { type PreflightResult, preflight } from '@/lib/budget/preflight';
+import { isChipId } from '@/lib/chat/chips';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
 import {
@@ -27,10 +29,27 @@ import {
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
+import { verifyTrust } from '@/lib/turnstile/cookie';
 import { createStreamOnFinish } from './on-finish';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+/**
+ * Extract a cookie value by name from a raw Cookie header string. Returns null
+ * if not present. Robust to spaces and the no-cookie-header case.
+ */
+function readCookie(cookieHeader: string, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) {
+      return part.slice(eq + 1).trim();
+    }
+  }
+  return null;
+}
 
 const BodySchema = z.object({
   sessionId: z.string().uuid().optional(),
@@ -59,17 +78,53 @@ export async function POST(req: Request) {
 
   const userId = await getUserId();
 
-  // Anonymous identity is provided by Phase 4 middleware via the `pac_anon`
-  // cookie. Until that lands, accept it as a header for tests and integrations;
-  // real anonymous traffic will currently resolve to actor=null and skip the
-  // per-actor cap while global caps still apply (graceful degradation).
-  const rawAnonymousId = userId ? null : req.headers.get('x-anonymous-id');
-  const anonymousId = rawAnonymousId && rawAnonymousId.length <= 128 ? rawAnonymousId : null;
+  // Anonymous identity resolution:
+  //   - Production: pac_anon signed cookie set by proxy.ts
+  //   - Tests: x-anonymous-id header (no middleware in vitest)
+  // Cookie wins when both are present so we can't mask a real anon visitor
+  // with a test header in dev.
+  const cookieHeader = req.headers.get('cookie') ?? '';
+  const anonCookieValue = readCookie(cookieHeader, 'pac_anon');
+  const anonSecret = process.env.ANON_COOKIE_SECRET ?? '';
+  const verifiedAnonId =
+    anonCookieValue && anonSecret ? await verifyAnonCookie(anonCookieValue, anonSecret) : null;
+  const headerAnonRaw = userId ? null : req.headers.get('x-anonymous-id');
+  const headerAnon = headerAnonRaw && headerAnonRaw.length <= 128 ? headerAnonRaw : null;
+  const anonymousId = userId ? null : (verifiedAnonId ?? headerAnon);
   const actor = resolveActor({ userId, anonymousId });
   const byok = false; // wired up in Phase 5
+
   // Pin the request to a single UTC day so the preflight read and postflight
   // write agree even if the stream completes after midnight.
   const requestDay = new Date().toISOString().slice(0, 10);
+
+  // ----- Anonymous-traffic gates (run BEFORE preflight so rejected requests
+  // never spend DB or model budget) -----
+  if (!userId) {
+    // 1) Turnstile gate: anonymous must have a fresh pac_trust cookie.
+    const trustCookieValue = readCookie(cookieHeader, 'pac_trust');
+    const trustSecret = process.env.TRUST_COOKIE_SECRET ?? '';
+    const trusted =
+      trustCookieValue && trustSecret ? await verifyTrust(trustCookieValue, trustSecret) : null;
+    if (!trusted) {
+      return new Response(JSON.stringify({ error: 'turnstileRequired' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // 2) Chip-only gate: latest user message must carry a known chipId.
+    const lastUser = [...incoming].reverse().find((m) => m.role === 'user') as
+      | (UIMessage & { metadata?: { chipId?: unknown } })
+      | undefined;
+    const chipId = lastUser?.metadata?.chipId;
+    if (!isChipId(chipId)) {
+      return new Response(JSON.stringify({ error: 'chipRequired' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+  }
 
   let gate: PreflightResult;
   try {
@@ -84,10 +139,7 @@ export async function POST(req: Request) {
   if (!gate.allow) {
     return new Response(JSON.stringify({ error: 'quota', reason: gate.reason }), {
       status: 429,
-      headers: {
-        'content-type': 'application/json',
-        'retry-after': '60',
-      },
+      headers: { 'content-type': 'application/json', 'retry-after': '60' },
     });
   }
 
@@ -104,7 +156,7 @@ export async function POST(req: Request) {
     model = session.model;
   } else {
     const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
-    const created = await createSession({ model: candidate, userId });
+    const created = await createSession({ model: candidate, userId, anonymousId });
     sessionId = created.id;
     model = candidate;
     isNewSession = true;
