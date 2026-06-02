@@ -156,6 +156,16 @@ export const catalog = defineCatalog(schema, {
       description: 'A single-line text input field.',
     },
 
+    Textarea: {
+      props: z.object({
+        name: z.string().describe('Form field key'),
+        label: dynStr().optional(),
+        placeholder: dynStr().optional(),
+        rows: z.number().int().min(2).max(20).optional().describe('Visible row count; default 4'),
+      }),
+      description: 'A multi-line text input. Use for free-form questions or comments.',
+    },
+
     Select: {
       props: z.object({
         name: z.string().describe('Form field key'),
@@ -244,6 +254,31 @@ export const catalog = defineCatalog(schema, {
       description:
         'A horizontal layout. Children render in equal-width flex slots. Use to compose KPIs, badges, or buttons side-by-side. Wrap in a Card for dashboard headers.',
     },
+
+    Grid: {
+      props: z.object({
+        columns: z
+          .number()
+          .int()
+          .min(2)
+          .max(6)
+          .default(4)
+          .describe('Column count at sm: breakpoint; mobile collapses to 1 col'),
+        gap: z.enum(['tight', 'normal', 'loose']).default('normal'),
+      }),
+      description:
+        'A bento-style CSS grid. Direct children should be GridCells declaring colSpan/rowSpan. Use when tiles vary in visual weight; use Row when slots are equal.',
+    },
+
+    GridCell: {
+      props: z.object({
+        colSpan: z.number().int().min(1).max(6).default(1),
+        rowSpan: z.number().int().min(1).max(4).default(1),
+      }),
+      description:
+        'A cell inside a Grid. Wraps any content; controls its own colSpan and rowSpan. On mobile every cell collapses to a single column.',
+    },
+
   },
 });
 

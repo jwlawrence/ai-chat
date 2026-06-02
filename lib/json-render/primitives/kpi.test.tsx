@@ -27,4 +27,22 @@ describe('KPI renderer', () => {
     render(<KPI label="X" value="1" delta={{ value: '+1', trend }} />);
     expect(screen.getByText('+1')).toHaveClass(expectedClass);
   });
+
+  // U — structural guard: KPI must carry h-full so tiles stay uniform height
+  // in a dashboard row. The Card inside KPI uses h-full; without it a tile
+  // with a longer label would be shorter than its neighbour.
+  it('renders with h-full class on the card so dashboard tiles stay uniform height', () => {
+    const { container } = render(<KPI label="Headcount" value="42" />);
+    // The outermost rendered element (the shadcn Card) carries h-full.
+    // We identify it as the first element with role="article" or by class.
+    const card = container.firstElementChild;
+    expect(card?.className).toContain('h-full');
+  });
+
+  it('CardContent inside KPI carries h-full so flex column fills the card', () => {
+    const { container } = render(<KPI label="Headcount" value="42" />);
+    // CardContent sits one level inside the Card root element.
+    const content = container.querySelector('[data-slot="card-content"]');
+    expect(content?.className).toContain('h-full');
+  });
 });

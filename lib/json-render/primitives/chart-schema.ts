@@ -10,9 +10,18 @@ const seriesEntry = z.object({
     .regex(/^(hsl\(.+\)|#[0-9a-fA-F]{3,8}|var\(.+\))$/)
     .optional()
     .describe('CSS color, hex, or CSS variable. Omit to use theme defaults.'),
+  endpointLabel: z
+    .string()
+    .optional()
+    .describe('Optional label rendered at the right edge of the last data point. Line/area only.'),
 });
 
 const dataRow = z.record(z.string(), z.union([z.string(), z.number()]));
+
+const annotation = z.object({
+  x: z.string().describe('xKey value where the annotation lands; must match an entry in data'),
+  label: z.string().describe('Short callout text shown at the annotation'),
+});
 
 export const chartPropsSchema = z.object({
   kind: chartKind.describe('Chart type'),
@@ -31,6 +40,11 @@ export const chartPropsSchema = z.object({
   yAxisLabel: z.string().optional(),
   legend: z.boolean().optional().default(true),
   grid: z.boolean().optional().default(true),
+  annotations: z
+    .array(annotation)
+    .max(4)
+    .optional()
+    .describe('Optional vertical callouts at specific x values. Line/bar/area only.'),
 });
 
 export type ChartProps = z.infer<typeof chartPropsSchema>;

@@ -3,10 +3,92 @@
  * conversation.tsx.  Pure function — no JSX or DOM required.
  */
 
+import { createStateStore } from '@json-render/core';
 import type { UIMessage } from 'ai';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PressData } from './conversation';
-import { messageHasPressChip, messageHasRenderUI, messageHasVisibleOutput } from './conversation';
+import {
+  buildSubmitFormHandler,
+  messageHasPressChip,
+  messageHasRenderUI,
+  messageHasVisibleOutput,
+} from './conversation';
+
+// ---------------------------------------------------------------------------
+// R — client Web3Forms dispatch spy
+//
+// Asserts that conversation.tsx's submitForm path (via buildSubmitFormHandler)
+// calls sendContactFormToEmail with the expected accessKey and parsed fields
+// when formName === 'contact'. Mocks the helper at the module boundary so no
+// real HTTP call is made.
+// ---------------------------------------------------------------------------
+
+vi.mock('@/lib/contact/web3forms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/contact/web3forms')>();
+  return {
+    ...actual,
+    sendContactFormToEmail: vi.fn(async () => ({ ok: true })),
+  };
+});
+
+describe('R — submitForm: calls web3forms with accessKey + parsed fields', () => {
+  it('invokes sendContactFormToEmail with NEXT_PUBLIC key and contact fields', async () => {
+    const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
+    const mockSend = vi.mocked(sendContactFormToEmail);
+    mockSend.mockClear();
+
+    const store = createStateStore({
+      contact: {
+        name: 'Alice Smith',
+        company: 'BigCorp',
+        roleType: 'Engineering Manager',
+        question: 'Can you ship fast?',
+      },
+    });
+    const lockedRef = { current: false };
+    const sendMessage = vi.fn(async () => {});
+    const handler = buildSubmitFormHandler({
+      store,
+      lockedRef,
+      setIsLocked: () => {},
+      sendMessage,
+      specRoot: 'form-card',
+    });
+
+    await handler({ formName: 'contact', label: 'Submit contact' });
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    const [submission, opts] = mockSend.mock.calls[0];
+    // The accessKey must be the NEXT_PUBLIC env var (may be undefined in test
+    // env, but the call itself must happen with the right shape).
+    expect(opts).toHaveProperty('accessKey');
+    expect(submission).toMatchObject({
+      name: 'Alice Smith',
+      company: 'BigCorp',
+      roleType: 'Engineering Manager',
+      question: 'Can you ship fast?',
+    });
+  });
+
+  it('does not call sendContactFormToEmail for non-contact forms', async () => {
+    const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
+    const mockSend = vi.mocked(sendContactFormToEmail);
+    mockSend.mockClear();
+
+    const store = createStateStore({ newsletter: { email: 'x@y.com' } });
+    const handler = buildSubmitFormHandler({
+      store,
+      lockedRef: { current: false },
+      setIsLocked: () => {},
+      sendMessage: vi.fn(async () => {}),
+      specRoot: 'news-card',
+    });
+
+    await handler({ formName: 'newsletter', label: 'Subscribe' });
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal UIMessage with the given parts

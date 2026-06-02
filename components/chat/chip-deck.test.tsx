@@ -18,7 +18,9 @@ describe('ChipDeck', () => {
   it('calls onSelect with the matching chip on click', () => {
     const onSelect = vi.fn();
     render(<ChipDeck onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole('button', { name: /show me a dashboard/i }));
+    const dashboard = CHIP_PROMPTS.find((c) => c.id === 'dashboard');
+    if (!dashboard) throw new Error('expected dashboard chip in CHIP_PROMPTS');
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(dashboard.label, 'i') }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'dashboard' }));
   });
@@ -33,7 +35,9 @@ describe('ChipDeck', () => {
   it('does not call onSelect when disabled chip is clicked', () => {
     const onSelect = vi.fn();
     render(<ChipDeck onSelect={onSelect} disabled />);
-    fireEvent.click(screen.getByRole('button', { name: /show me a dashboard/i }));
+    const dashboard = CHIP_PROMPTS.find((c) => c.id === 'dashboard');
+    if (!dashboard) throw new Error('expected dashboard chip in CHIP_PROMPTS');
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(dashboard.label, 'i') }));
     expect(onSelect).not.toHaveBeenCalled();
   });
 

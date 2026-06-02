@@ -270,6 +270,212 @@ describe('registry — form primitives', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Textarea primitive — added for Phase 7 contact form (multi-line input)
+// ---------------------------------------------------------------------------
+
+const textareaSpec: Spec = {
+  root: 'form-root',
+  elements: {
+    'form-root': {
+      type: 'Form',
+      props: { name: 'note' },
+      children: ['note-area'],
+    },
+    'note-area': {
+      type: 'Textarea',
+      props: {
+        name: 'body',
+        label: 'Anything else',
+        placeholder: 'Share a quick note',
+        rows: 5,
+      },
+      children: [],
+    },
+  },
+};
+
+describe('registry — Textarea primitive', () => {
+  it('renders Textarea with its label and placeholder', () => {
+    renderSpec(textareaSpec);
+    const ta = screen.getByLabelText('Anything else') as HTMLTextAreaElement;
+    expect(ta).toBeInTheDocument();
+    expect(ta.tagName).toBe('TEXTAREA');
+    expect(ta.placeholder).toBe('Share a quick note');
+    expect(ta.rows).toBe(5);
+  });
+
+  it('writes user input through to the form state path /<formName>/<fieldName>', () => {
+    renderSpec(textareaSpec);
+    const ta = screen.getByLabelText('Anything else') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: 'hello from the textarea' } });
+    expect(ta.value).toBe('hello from the textarea');
+  });
+
+  it('defaults rows to 4 when omitted', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'f' },
+          children: ['ta'],
+        },
+        ta: {
+          type: 'Textarea',
+          props: { name: 'body', label: 'Body' },
+          children: [],
+        },
+      },
+    };
+    renderSpec(spec);
+    const ta = screen.getByLabelText('Body') as HTMLTextAreaElement;
+    expect(ta.rows).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Grid / GridCell — bento dashboard layout primitives
+// ---------------------------------------------------------------------------
+
+describe('registry — Grid / GridCell primitives', () => {
+  it('renders Grid with the configured column count and gap', () => {
+    const spec: Spec = {
+      root: 'g',
+      elements: {
+        g: {
+          type: 'Grid',
+          props: { columns: 4, gap: 'normal' },
+          children: ['c1'],
+        },
+        c1: {
+          type: 'GridCell',
+          props: { colSpan: 2, rowSpan: 2 },
+          children: ['t1'],
+        },
+        t1: {
+          type: 'Text',
+          props: { text: 'hello' },
+          children: [],
+        },
+      },
+    };
+    renderSpec(spec);
+    const grid = screen.getByText('hello').closest('div.grid');
+    expect(grid).not.toBeNull();
+    expect(grid?.className).toContain('sm:grid-cols-4');
+    expect(grid?.className).toContain('gap-4');
+  });
+
+  it('renders GridCell with col-span and row-span classes', () => {
+    const spec: Spec = {
+      root: 'g',
+      elements: {
+        g: {
+          type: 'Grid',
+          props: { columns: 4, gap: 'normal' },
+          children: ['c1'],
+        },
+        c1: {
+          type: 'GridCell',
+          props: { colSpan: 3, rowSpan: 2 },
+          children: ['t1'],
+        },
+        t1: {
+          type: 'Text',
+          props: { text: 'cell content' },
+          children: [],
+        },
+      },
+    };
+    renderSpec(spec);
+    const cell = screen.getByText('cell content').parentElement;
+    expect(cell?.className).toContain('sm:col-span-3');
+    expect(cell?.className).toContain('sm:row-span-2');
+  });
+
+  it('renders multiple GridCells with different spans inside one Grid', () => {
+    const spec: Spec = {
+      root: 'g',
+      elements: {
+        g: {
+          type: 'Grid',
+          props: { columns: 4, gap: 'tight' },
+          children: ['hero', 'small1', 'small2'],
+        },
+        hero: {
+          type: 'GridCell',
+          props: { colSpan: 2, rowSpan: 2 },
+          children: ['hero-text'],
+        },
+        small1: {
+          type: 'GridCell',
+          props: { colSpan: 1, rowSpan: 1 },
+          children: ['t1'],
+        },
+        small2: {
+          type: 'GridCell',
+          props: { colSpan: 1, rowSpan: 1 },
+          children: ['t2'],
+        },
+        'hero-text': { type: 'Text', props: { text: 'HERO' }, children: [] },
+        t1: { type: 'Text', props: { text: 'T1' }, children: [] },
+        t2: { type: 'Text', props: { text: 'T2' }, children: [] },
+      },
+    };
+    renderSpec(spec);
+    expect(screen.getByText('HERO')).toBeInTheDocument();
+    expect(screen.getByText('T1')).toBeInTheDocument();
+    expect(screen.getByText('T2')).toBeInTheDocument();
+    const hero = screen.getByText('HERO').parentElement;
+    expect(hero?.className).toContain('sm:col-span-2');
+    expect(hero?.className).toContain('sm:row-span-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T — Select primitive shows the option LABEL for the selected value
+// ---------------------------------------------------------------------------
+
+describe('registry — T: Select shows label not raw value for selected option', () => {
+  it('displays the option label in the trigger when an option is selected', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      state: { contact: { roleType: 'em' } },
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'contact' },
+          children: ['role-select'],
+        },
+        'role-select': {
+          type: 'Select',
+          props: {
+            name: 'roleType',
+            label: 'Role',
+            options: [
+              { value: 'em', label: 'Engineering Manager' },
+              { value: 'ic', label: 'Individual Contributor' },
+            ],
+          },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore((spec.state as Record<string, unknown>) ?? {});
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    // The trigger should show the friendly label, not the raw value token.
+    expect(screen.getByText('Engineering Manager')).toBeInTheDocument();
+    expect(screen.queryByText('em')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tabs controlled binding via valueStatePath
 // ---------------------------------------------------------------------------
 

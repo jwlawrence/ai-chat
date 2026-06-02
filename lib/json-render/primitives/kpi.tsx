@@ -24,13 +24,24 @@ function DeltaRow({ delta }: { delta: Delta }) {
 }
 
 export function KPI({ label, value, delta, caption }: KpiProps) {
+  // h-full + flex column so a row of KPIs renders at uniform height, with the
+  // value anchored at the top of the value zone regardless of how long the
+  // label wraps. mt-auto on the optional delta/caption pushes the trailing
+  // content to the bottom when present, keeping vertical rhythm consistent
+  // across tiles whether or not they carry a caption.
   return (
-    <Card>
-      <CardContent className="space-y-1 p-4">
+    <Card className="h-full">
+      <CardContent className="flex h-full flex-col gap-1 p-4">
         <div className="text-sm text-muted-foreground">{label}</div>
         <div className="text-2xl font-semibold tracking-tight">{value}</div>
-        {delta && <DeltaRow delta={delta} />}
-        {caption && <div className="text-xs text-muted-foreground">{caption}</div>}
+        {delta && (
+          <div className="mt-auto">
+            <DeltaRow delta={delta} />
+          </div>
+        )}
+        {caption && (
+          <div className={cn('text-xs text-muted-foreground', !delta && 'mt-auto')}>{caption}</div>
+        )}
       </CardContent>
     </Card>
   );

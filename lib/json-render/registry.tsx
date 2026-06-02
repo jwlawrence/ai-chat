@@ -47,7 +47,9 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { TabsContent, TabsList, TabsTrigger, Tabs as UiTabs } from '@/components/ui/tabs';
+import { Textarea as UiTextarea } from '@/components/ui/textarea';
 import { ACTION_REGISTRY, catalog } from '@/lib/json-render/catalog';
+import { cn } from '@/lib/utils';
 import { Chart } from './primitives/chart';
 import { KPI } from './primitives/kpi';
 import { Row } from './primitives/row';
@@ -108,7 +110,9 @@ function isOneShotBound(el: Spec['elements'][string]): boolean {
  * is introduced.
  */
 function isFormField(elType: string): boolean {
-  return elType === 'Input' || elType === 'Select' || elType === 'Checkbox';
+  return (
+    elType === 'Input' || elType === 'Textarea' || elType === 'Select' || elType === 'Checkbox'
+  );
 }
 
 /**
@@ -350,20 +354,27 @@ const db = (v: boolean | { $state: string } | undefined): boolean | undefined =>
 export const { registry } = defineRegistry(catalog, {
   components: {
     // ---- Card ---------------------------------------------------------------
-    // space-y-3 on CardContent gives adjacent body elements (Heading + Text +
-    // Badge + Callout + ...) vertical rhythm. Without it the renderer drops
-    // every child flush against the next.
-    Card: (({ props, children }) => (
-      <UiCard className="bg-card/80 border border-border">
-        {props.title && (
-          <CardHeader>
-            <CardTitle>{ds(props.title)}</CardTitle>
-          </CardHeader>
-        )}
-        <CardContent className="space-y-3">{children}</CardContent>
-        {props.footer && <CardFooter>{ds(props.footer)}</CardFooter>}
-      </UiCard>
-    )) satisfies ComponentFn<typeof catalog, 'Card'>,
+    // h-full lets a Card stretch to fill its parent slot (e.g. a GridCell that
+    // spans multiple rows of a bento layout). Outside of a constrained parent,
+    // h-full resolves to auto and is a no-op.
+    //
+    // CardContent uses flex flex-col gap-3 instead of space-y-3 so children
+    // participate in flex sizing — any child with flex-1 (e.g. a Chart wrapper
+    // in a bento hero tile) grows into remaining vertical space rather than
+    // leaving white space below.
+    Card: (({ props, children }) => {
+      return (
+        <UiCard className="flex h-full flex-col border border-border bg-card/80">
+          {props.title && (
+            <CardHeader>
+              <CardTitle>{ds(props.title)}</CardTitle>
+            </CardHeader>
+          )}
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-3">{children}</CardContent>
+          {props.footer && <CardFooter>{ds(props.footer)}</CardFooter>}
+        </UiCard>
+      );
+    }) satisfies ComponentFn<typeof catalog, 'Card'>,
 
     // ---- Heading ------------------------------------------------------------
     Heading: (({ props }) => {
@@ -498,6 +509,52 @@ export const { registry } = defineRegistry(catalog, {
       );
     }) satisfies ComponentFn<typeof catalog, 'Input'>,
 
+    // ---- Textarea -----------------------------------------------------------
+    // Same FormContext/store binding pattern as Input. Disabled-on-lock is
+    // handled via applyLockToSpec injecting `disabled: true` into props (see
+    // isFormField). Default row count is 4 — wide enough for short comments
+    // without dominating the card.
+    Textarea: (({ props }) => {
+      const formCtx = useFormContext();
+      const store = useStateStore();
+      const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath change matters
+      useEffect(() => {
+        if (statePath && store.get(statePath) === undefined) {
+          store.set(statePath, '');
+        }
+      }, [statePath]);
+      if (!formCtx && process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[json-render] Textarea "${props.name}" rendered outside a Form — not bound to store`,
+        );
+      }
+      const value = statePath ? ((store.get(statePath) as string | undefined) ?? '') : undefined;
+      return (
+        <div className="space-y-1">
+          {props.label && (
+            <label htmlFor={props.name} className="text-sm font-medium">
+              {ds(props.label)}
+            </label>
+          )}
+          <UiTextarea
+            id={props.name}
+            name={props.name}
+            rows={props.rows ?? 4}
+            placeholder={ds(props.placeholder)}
+            disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            {...(statePath
+              ? {
+                  value,
+                  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    store.set(statePath, e.target.value),
+                }
+              : {})}
+          />
+        </div>
+      );
+    }) satisfies ComponentFn<typeof catalog, 'Textarea'>,
+
     // ---- Select -------------------------------------------------------------
     // When inside a Form, auto-binds to /{formName}/{fieldName} in the store.
     Select: (({ props }) => {
@@ -529,7 +586,19 @@ export const { registry } = defineRegistry(catalog, {
             onValueChange={statePath ? (v) => store.set(statePath, v) : undefined}
           >
             <SelectTrigger className="w-full" aria-label={ds(props.label)}>
-              <SelectValue placeholder="Select…" />
+              {/*
+                base-ui's SelectValue defaults to the raw value when no
+                children render function is given, so a user picking
+                "Engineering Manager" would see whatever underlying value
+                token was used. Map value → label so the trigger shows
+                the friendly text.
+              */}
+              <SelectValue placeholder="Select…">
+                {(value: unknown) => {
+                  const match = props.options.find((o) => ds(o.value) === value);
+                  return match ? ds(match.label) : '';
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {props.options.map((opt) => (
@@ -697,5 +766,62 @@ export const { registry } = defineRegistry(catalog, {
       );
       return <Row {...rowProps}>{wrapped}</Row>;
     }) satisfies ComponentFn<typeof catalog, 'Row'>,
+
+    // ---- Grid / GridCell ----------------------------------------------------
+    // CSS grid bento layout. Tailwind class maps are enumerated as literal
+    // strings so the JIT scanner sees every variant — do NOT interpolate
+    // values into the className string.
+    //
+    // Mobile collapses every Grid to a single column (grid-cols-1) and every
+    // GridCell to col-span-1 (rowSpan is sm:-only so auto-flow handles the
+    // mobile layout cleanly). This avoids the model having to think about
+    // breakpoints.
+    Grid: (({ props, children }) => (
+      <div className={cn('grid w-full', GRID_COLS_CLASS[props.columns], GAP_CLASS[props.gap])}>
+        {children}
+      </div>
+    )) satisfies ComponentFn<typeof catalog, 'Grid'>,
+
+    GridCell: (({ props, children }) => (
+      <div className={cn(COL_SPAN_CLASS[props.colSpan], ROW_SPAN_CLASS[props.rowSpan])}>
+        {children}
+      </div>
+    )) satisfies ComponentFn<typeof catalog, 'GridCell'>,
+
   },
 });
+
+// ---------------------------------------------------------------------------
+// Tailwind class maps for the Grid / GridCell primitives. Enumerated as
+// literal strings so the JIT scanner picks them up at build time.
+// ---------------------------------------------------------------------------
+
+const GRID_COLS_CLASS: Record<number, string> = {
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-3',
+  4: 'grid-cols-1 sm:grid-cols-4',
+  5: 'grid-cols-1 sm:grid-cols-5',
+  6: 'grid-cols-1 sm:grid-cols-6',
+};
+
+const GAP_CLASS = {
+  tight: 'gap-2',
+  normal: 'gap-4',
+  loose: 'gap-6',
+} as const;
+
+const COL_SPAN_CLASS: Record<number, string> = {
+  1: 'col-span-1',
+  2: 'col-span-1 sm:col-span-2',
+  3: 'col-span-1 sm:col-span-3',
+  4: 'col-span-1 sm:col-span-4',
+  5: 'col-span-1 sm:col-span-5',
+  6: 'col-span-1 sm:col-span-6',
+};
+
+const ROW_SPAN_CLASS: Record<number, string> = {
+  1: 'sm:row-span-1',
+  2: 'sm:row-span-2',
+  3: 'sm:row-span-3',
+  4: 'sm:row-span-4',
+};

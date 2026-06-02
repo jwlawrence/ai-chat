@@ -57,6 +57,7 @@ describe('catalog', () => {
       'Button',
       'List',
       'Input',
+      'Textarea',
       'Select',
       'Checkbox',
       'Form',
@@ -69,6 +70,8 @@ describe('catalog', () => {
       'Table',
       'KPI',
       'Row',
+      'Grid',
+      'GridCell',
     ];
     expect(catalog.componentNames).toEqual(expect.arrayContaining(expected));
     expect(catalog.componentNames).toHaveLength(expected.length);
@@ -275,8 +278,10 @@ describe('catalogPrompt', () => {
     // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB);
     // Phase 6/B1 added annotated-list pattern (~20.3 KB actual);
     // Phase 6 login-as: signInWith moved into endpoint section (redirect section removed).
-    // Bound = 22_400 — a silent doubling would trip this guard.
-    expect(catalogPrompt.length).toBeLessThan(22_400);
+    // Phase 7 added Textarea, Chart annotations + endpointLabel, Grid/GridCell (~22.5 KB).
+    // Phase 7 precheck: Icon primitive + Card.icon prop removed (~21.5 KB actual).
+    // Architectural ceiling is 6000 tokens (~24_000 chars); see catalog-prompt-size.test.ts.
+    expect(catalogPrompt.length).toBeLessThan(24_000);
   });
 });
 
@@ -339,7 +344,7 @@ describe('ACTION_REGISTRY + resolveActionMode — Phase 4: refreshData', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 4 endpoint section', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_400);
+    expect(catalogPrompt.length).toBeLessThan(24_000);
   });
 });
 
@@ -460,7 +465,7 @@ describe('catalogPrompt — Phase 4.1 keywords', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 4.1 additions', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_400);
+    expect(catalogPrompt.length).toBeLessThan(24_000);
   });
 
   it('mentions valueStatePath', () => {
@@ -593,9 +598,9 @@ describe('catalogPrompt — Phase 6/B1: annotated list pattern', () => {
 
   it('catalogPrompt size is within expected bound after Phase 6 additions', () => {
     // signInWith folded into endpoint section; redirect section removed.
-    // Lower bound relaxed to 17_000 since the prompt is somewhat smaller without redirect section.
+    // Icon + Card.icon removed in Phase 7 precheck hardening.
     expect(catalogPrompt.length).toBeGreaterThan(17_000);
-    expect(catalogPrompt.length).toBeLessThan(22_400);
+    expect(catalogPrompt.length).toBeLessThan(24_000);
   });
 });
 
@@ -618,7 +623,7 @@ describe('catalogPrompt — Phase 5: form submission section', () => {
   });
 
   it('catalogPrompt still fits within the expected size envelope after Phase 5 additions', () => {
-    expect(catalogPrompt.length).toBeLessThan(22_400);
+    expect(catalogPrompt.length).toBeLessThan(24_000);
   });
 });
 

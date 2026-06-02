@@ -10,6 +10,7 @@ import { DEFAULT_MODEL, type ModelId } from '@/lib/ai/models';
 import { recordToHeaders } from '@/lib/byok/headers';
 import { loadByok } from '@/lib/byok/storage';
 import type { ChipPrompt } from '@/lib/chat/chips';
+import { useChatStatus } from '@/components/sidebar/chat-status-context';
 import { AnonTurnstileGate } from './anon-gate';
 import { ChipDeck } from './chip-deck';
 import { Composer } from './composer';
@@ -66,6 +67,8 @@ export function Chat({
     [],
   );
 
+  const { setStatus: setChatStatus } = useChatStatus();
+
   const { messages, sendMessage, status, error, regenerate, stop } = useChat({
     transport,
     messages: initialMessages,
@@ -90,6 +93,12 @@ export function Chat({
     },
   });
 
+  // Publish status to the shared context so NewChatButton can disable
+  // itself during in-flight turns without prop-drilling through the layout.
+  useEffect(() => {
+    setChatStatus(status);
+  }, [status, setChatStatus]);
+
   const modelLocked = messages.length > 0;
   const showError = status === 'error' && !!error;
 
@@ -112,11 +121,7 @@ export function Chat({
       <ChatConversation
         messages={messages}
         status={status}
-        onSuggest={
-          isAnonymous
-            ? undefined
-            : (text) => sendMessage({ role: 'user', parts: [{ type: 'text', text }] })
-        }
+        onChipSelect={isAnonymous ? undefined : handleChipSelect}
         sendMessage={sendMessage}
         isAnonymous={isAnonymous}
       />

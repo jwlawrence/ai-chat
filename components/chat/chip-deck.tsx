@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, LayoutDashboard, MousePointerClick, Sparkles } from 'lucide-react';
+import { BarChart3, LayoutDashboard, LayoutGrid, MailPlus } from 'lucide-react';
 import { CHIP_PROMPTS, type ChipId, type ChipPrompt } from '@/lib/chat/chips';
 import { cn } from '@/lib/utils';
 
@@ -12,16 +12,16 @@ interface Props {
 
 const CHIP_ICONS: Record<ChipId, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
-  interactive: MousePointerClick,
-  composition: Sparkles,
+  composition: LayoutGrid,
   charts: BarChart3,
+  interactive: MailPlus,
 };
 
 const CHIP_BLURBS: Record<ChipId, string> = {
-  dashboard: 'Live KPIs, a table, and a chart in one card.',
-  interactive: 'A form with validation and stateful UI.',
-  composition: 'Multi-section card with tabs and details.',
-  charts: 'Bar, line, area — interactive and themed.',
+  dashboard: 'EngX platform impact at a glance.',
+  composition: 'Career proof points across four cards.',
+  charts: 'Partner-team contributor growth over time.',
+  interactive: 'Send Josh a note about a role.',
 };
 
 export function ChipDeck({ onSelect, disabled, className }: Props) {

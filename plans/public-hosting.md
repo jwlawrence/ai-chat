@@ -3930,6 +3930,8 @@ Check: `curl -s http://localhost:3000 | grep -i 'noindex'` matches.
 
 Use `pnpm dlx vercel env add` for each. Per the user's CLAUDE.md, the `/vercel:env` skill exists if needed for orchestration.
 
+- [ ] **Step 3: Web3Forms Restricted Domains** — In the Web3Forms dashboard, set Restricted Domains to the production hostname (e.g. `your-domain.com`). This is the deploy-time mitigation for the bundle-visible `NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY`; it ensures the key only accepts submissions from the prod origin.
+
 #### Task 8.3 — OAuth redirect URIs
 
 - [ ] **Step 1: Register production callback URLs**

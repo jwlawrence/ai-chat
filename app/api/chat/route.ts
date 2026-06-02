@@ -18,9 +18,17 @@ import { getUserId } from '@/lib/auth';
 import { resolveActor } from '@/lib/budget/identity';
 import { type PreflightResult, preflight } from '@/lib/budget/preflight';
 import { headersToOverride } from '@/lib/byok/headers';
+import { applyRichChipPrompts } from '@/lib/chat/chips';
 import { checkChipGate, checkTurnstileGate } from '@/lib/chat/non-model-gates';
 import { reconcileIncoming } from '@/lib/chat/reconcile';
 import { hasUIRenderIntent } from '@/lib/chat/ui-intent';
+import { buildAutoReplySpec } from '@/lib/contact/auto-reply';
+import { checkContactSubmitRateLimit, claimSubmissionId } from '@/lib/contact/rate-limit';
+import {
+  detectContactFormSubmit,
+  extractContactSubmissionId,
+  hasInteractiveChipChain,
+} from '@/lib/contact/web3forms';
 import {
   appendMessages,
   countMessages,
@@ -110,7 +118,154 @@ export async function POST(req: Request) {
   const earlyTurnstile = await checkTurnstileGate({ userId, cookieHeader });
   if (earlyTurnstile) return earlyTurnstile;
 
-  // 2) Chip-only gate: latest user message must carry a known chipId.
+  // 2) Contact-form submission: detect BEFORE the chip gate and BEFORE
+  //    preflight. The submit message is a follow-up to the original chip
+  //    click and does not carry metadata.chipId, so the chip gate would
+  //    otherwise reject anonymous form submissions. The contact flow is
+  //    server-deterministic: we POST to Web3Forms and emit the auto-reply
+  //    card via writeServerCard. The model is never invoked, so neither
+  //    the chip gate nor the AI-cap preflight apply here.
+  const contactSubmission = detectContactFormSubmit(incoming[incoming.length - 1]);
+  if (contactSubmission) {
+    // Anonymous chain guard: an attacker rotating pac_anon cookies could
+    // otherwise mint sessions inside the per-actor rate limit by submitting
+    // a hand-crafted message with no prior history. Requiring a preceding
+    // `metadata.chipId === 'interactive'` user turn means they'd also need
+    // to forge a legitimate-looking chip click chain, which the chip gate
+    // audits on its own turn. Signed-in users skip this — their userId is
+    // already a stable handle that the rate limit binds to.
+    if (!userId && !hasInteractiveChipChain(incoming)) {
+      return new Response(
+        JSON.stringify({ error: 'chainRequired', reason: 'interactiveChipMissing' }),
+        { status: 403, headers: { 'content-type': 'application/json' } },
+      );
+    }
+
+    // Identify the actor for rate-limiting. Anonymous visitors without a
+    // pac_anon cookie cannot be tracked across requests, so we refuse to
+    // process unattributed submits at all — this also keeps the in-memory
+    // rate-limit map from being polluted with empty-string keys.
+    const actorKey = userId ? `user:${userId}` : anonymousId ? `anon:${anonymousId}` : null;
+    if (!actorKey) {
+      return new Response(JSON.stringify({ error: 'unauthorized', reason: 'noActor' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    // Idempotency: if the client-stamped submissionId has already been
+    // processed within the dedupe window, short-circuit BEFORE incrementing
+    // the rate-limit counter or creating a session. Returns a small JSON
+    // ok-with-replay so the duplicate request still gets a clean response.
+    const submissionId = extractContactSubmissionId(incoming[incoming.length - 1]);
+    if (submissionId && !claimSubmissionId(submissionId).fresh) {
+      return new Response(JSON.stringify({ ok: true, replay: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    const rateLimit = checkContactSubmitRateLimit(actorKey);
+    if (!rateLimit.allowed) {
+      console.warn('[contact] rate limit hit', { actorKey });
+      return new Response(
+        JSON.stringify({
+          error: 'rate_limit',
+          reason: 'contactSubmitRateLimitExceeded',
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
+        }),
+        {
+          status: 429,
+          headers: {
+            'content-type': 'application/json',
+            'retry-after': String(rateLimit.retryAfterSeconds),
+          },
+        },
+      );
+    }
+
+    let contactSessionId: string;
+    let isNewContactSession = false;
+    if (body.sessionId) {
+      const session = await getSession(body.sessionId, userId);
+      if (!session) return new Response('Session not found', { status: 404 });
+      contactSessionId = session.id;
+    } else {
+      const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
+      const created = await createSession({ model: candidate, userId, anonymousId });
+      contactSessionId = created.id;
+      isNewContactSession = true;
+    }
+
+    const dbCount = isNewContactSession ? 0 : await countMessages(contactSessionId, userId);
+    const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
+
+    const replySpec = buildAutoReplySpec(contactSubmission);
+    const contactToolCallId = `injected-${crypto.randomUUID()}`;
+
+    // Note: the actual email delivery happens client-side. Web3Forms sits
+    // behind Cloudflare's managed bot challenge, which rejects server-side
+    // fetches with a 403 challenge page. The browser passes the challenge
+    // automatically, so the submitForm handler in conversation.tsx fires
+    // the POST in parallel with this server submit. We only handle the
+    // deterministic auto-reply card here.
+
+    // Track whether the server card actually made it into the stream so the
+    // onFinish persist doesn't lie about delivery. Without this, a thrown
+    // writeServerCard still leaves us appending an assistant tool-renderUI
+    // part claiming `output: replySpec` — the user reloads and the transcript
+    // shows an "answered" turn for a card they never saw.
+    let cardWritten = false;
+    const stream = createUIMessageStream({
+      execute: ({ writer }) => {
+        writer.write({
+          type: 'data-session',
+          data: { id: contactSessionId, isNew: isNewContactSession },
+          transient: true,
+        });
+        try {
+          writeServerCard(writer, replySpec, contactToolCallId);
+          cardWritten = true;
+        } catch (err) {
+          console.error('[contact] writeServerCard failed', err);
+        }
+      },
+      originalMessages: incoming,
+      onFinish: async () => {
+        try {
+          if (trimCount > 0) {
+            await trimTrailingMessages(contactSessionId, userId, trimCount);
+          }
+          const persistedMessages: Array<{ role: string; parts: unknown[] }> = newUserMessages.map(
+            (m) => ({ role: m.role, parts: m.parts }),
+          );
+          if (cardWritten) {
+            persistedMessages.push({
+              role: 'assistant',
+              parts: [
+                {
+                  type: 'tool-renderUI',
+                  toolCallId: contactToolCallId,
+                  state: 'output-available',
+                  input: replySpec,
+                  output: replySpec,
+                },
+              ],
+            });
+          }
+          await appendMessages(
+            contactSessionId,
+            userId,
+            persistedMessages as Parameters<typeof appendMessages>[2],
+          );
+          await touchSession(contactSessionId, userId);
+        } catch (err) {
+          console.error('[contact] persistence error in onFinish', err);
+        }
+      },
+    });
+    return createUIMessageStreamResponse({ stream });
+  }
+
+  // 3) Chip-only gate: latest user message must carry a known chipId.
   const earlyChip = checkChipGate({ userId, incoming });
   if (earlyChip) return earlyChip;
 
@@ -235,8 +390,12 @@ export async function POST(req: Request) {
   const dbCount = isNewSession ? 0 : await countMessages(sessionId, userId);
   const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
 
-  // The view sent to the model: sliding window of the most recent messages.
-  const windowed = incoming.slice(-CONTEXT_WINDOW);
+  // The view sent to the model: sliding window of the most recent messages,
+  // with the latest chip-tagged user message swapped from its short transcript
+  // text to the rich spec-grade prompt stored server-side in RICH_CHIP_PROMPTS.
+  // Persistence still sees the short text via `incoming` / `newUserMessages`,
+  // so the recruiter-facing transcript stays clean.
+  const windowed = applyRichChipPrompts(incoming.slice(-CONTEXT_WINDOW));
 
   // Resolve the model instance before entering the stream so a missing BYOK
   // deployment surfaces as a clean 400 rather than an opaque stream abort.

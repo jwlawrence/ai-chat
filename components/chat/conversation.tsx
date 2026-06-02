@@ -16,8 +16,11 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
 import { specSchema } from '@/lib/ai/tools/render-ui';
+import type { ChipPrompt } from '@/lib/chat/chips';
+import { parseContactFormFields, sendContactFormToEmail } from '@/lib/contact/web3forms';
 import { ACTION_REGISTRY } from '@/lib/json-render/catalog';
 import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
+import { ChipDeck } from './chip-deck';
 
 type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
 
@@ -98,6 +101,27 @@ export interface PressData {
   message?: string;
   /** Optional structured payload echoed to the model as JSON. */
   data?: Record<string, unknown>;
+  /**
+   * For submitForm presses: the form `name` prop. Lets the server identify
+   * specific form submissions (e.g. the contact form) without having to
+   * pattern-match the data payload.
+   */
+  formName?: string;
+  /**
+   * For submitForm presses on idempotent flows (contact form): a UUID
+   * stamped client-side on the first press. The server uses it to dedupe
+   * React StrictMode double-fires, double-clicks past the card-lock race,
+   * and retries on hung fetches.
+   */
+  submissionId?: string;
+  /**
+   * Hide the press from the visible transcript. The data-press part still
+   * lives on the user message (needed for server-side detection and
+   * persistence) — it just doesn't render a "You pressed: <label>" chip.
+   * Set by the dispatcher when the user-facing acknowledgement is already
+   * carried by a server-emitted card (e.g. the contact-form auto-reply).
+   */
+  hideTranscriptChip?: boolean;
   /**
    * Root id of the renderUI card that produced this press. Used on reload to
    * pre-lock cards that were already used in earlier turns — the in-memory
@@ -277,6 +301,58 @@ export function buildSubmitFormHandler(opts: {
       message ? ` — ${message}` : '',
       ']',
     ].join('');
+    // Generate per-press idempotency key for the contact flow. Other forms
+    // don't need it today; the server only consults submissionId when it
+    // also detects formName === 'contact'.
+    const submissionId =
+      formName === 'contact'
+        ? typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        : undefined;
+
+    // For the contact form, fire the Web3Forms POST from the browser in
+    // parallel with the server submit. Web3Forms sits behind Cloudflare's
+    // managed bot challenge, which silently 403s server-side fetches but
+    // passes through normal browser sessions. The access key is exposed via
+    // NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY — Web3Forms keys are public by design
+    // (the value identifies a destination, not the sender, and is visible on
+    // any documented HTML form pattern). Failures only land in the console;
+    // the deterministic auto-reply card still renders from the server so the
+    // visitor sees a clean acknowledgement either way.
+    if (formName === 'contact') {
+      const submission = parseContactFormFields(formData);
+      if (submission) {
+        void sendContactFormToEmail(submission, {
+          accessKey: process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY ?? '',
+        })
+          .then((r) => {
+            if (!r.ok) {
+              // Surface to the visitor instead of failing silently behind
+              // the "Thanks, …" card — a confident-but-undelivered contact
+              // form is the worst possible UX. Toast carries a direct
+              // mailto: fallback so the visitor isn't stranded.
+              console.error('[contact] Web3Forms client send failed', r);
+              toast.warning('Email delivery failed', {
+                description:
+                  'The form submission did not reach Josh. Please email jlawrence@linkedin.com directly.',
+                duration: 10000,
+              });
+            }
+          })
+          .catch((err) => {
+            console.error('[contact] Web3Forms client send threw', err);
+            toast.warning('Email delivery failed', {
+              description:
+                'The form submission did not reach Josh. Please email jlawrence@linkedin.com directly.',
+              duration: 10000,
+            });
+          });
+      } else {
+        console.error('[contact] form data failed validation before send', formData);
+      }
+    }
+
     try {
       await sendMessage({
         role: 'user',
@@ -290,6 +366,12 @@ export function buildSubmitFormHandler(opts: {
               data: formData,
               sourceRootId: specRoot,
               mode: 'model',
+              formName,
+              ...(submissionId ? { submissionId } : {}),
+              // Contact form has its own server-emitted auto-reply card; the
+              // "You pressed: Submitted contact" transcript chip would read
+              // like a duplicate message. Other forms keep the default chip.
+              ...(formName === 'contact' ? { hideTranscriptChip: true } : {}),
             } satisfies PressData,
           } as unknown as UIMessage['parts'][number],
           { type: 'text', text: modelText },
@@ -511,50 +593,40 @@ function RenderUICard({
   );
 }
 
-const SUGGESTIONS = [
-  'Explain a tricky concept in plain English',
-  'Help me debug a piece of code',
-  'Draft an email I keep putting off',
-  'Brainstorm names for a new project',
-];
-
 function EmptyState({
-  onSuggest,
+  onChipSelect,
   isAnonymous = false,
 }: {
-  onSuggest?: (text: string) => void;
+  onChipSelect?: (chip: ChipPrompt) => void;
   isAnonymous?: boolean;
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-8 px-4 py-12 text-center">
-      <div className="flex flex-col items-center gap-3">
+      <div className="flex max-w-xl flex-col items-center gap-3">
         <div className="flex size-12 items-center justify-center rounded-full bg-card ring-1 ring-border">
           <Sparkles className="size-5 text-muted-foreground" />
         </div>
-        <h1 className="font-semibold text-2xl tracking-tight">
-          {isAnonymous ? 'A small showcase' : 'How can I help today?'}
+        <h1 className="font-semibold text-3xl tracking-tight">
+          {isAnonymous ? 'A chat that builds its own UI.' : 'How can I help today?'}
         </h1>
         <p className="max-w-md text-muted-foreground text-sm">
           {isAnonymous
-            ? 'Pick a starter below — each one shows how the model renders a different kind of UI.'
-            : 'Start a new conversation by typing below, or pick one of these to get going.'}
+            ? 'Pick a starter below. The model answers with interactive components, not plain text.'
+            : 'Pick a starter below, or type your own prompt at the bottom.'}
         </p>
+        {isAnonymous ? (
+          <p className="max-w-md text-muted-foreground text-xs">
+            A portfolio piece by Josh Lawrence.
+          </p>
+        ) : null}
       </div>
-      {isAnonymous ? null : (
-        <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onSuggest?.(s)}
-              disabled={!onSuggest}
-              className="rounded-lg border border-border bg-card px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {/*
+        Anonymous users get a ChipDeck pinned at the bottom (it replaces the
+        composer); rendering it here too would be a duplicate surface. Logged-in
+        users get the deck inline as the empty-state launch pad while the
+        composer underneath stays available for free-form typing.
+      */}
+      {!isAnonymous && onChipSelect ? <ChipDeck onSelect={onChipSelect} /> : null}
     </div>
   );
 }
@@ -562,13 +634,13 @@ function EmptyState({
 export function ChatConversation({
   messages,
   status,
-  onSuggest,
+  onChipSelect,
   sendMessage,
   isAnonymous = false,
 }: {
   messages: UIMessage[];
   status: 'ready' | 'streaming' | 'submitted' | 'error';
-  onSuggest?: (text: string) => void;
+  onChipSelect?: (chip: ChipPrompt) => void;
   sendMessage: SendMessage;
   isAnonymous?: boolean;
 }) {
@@ -610,7 +682,7 @@ export function ChatConversation({
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className={isEmpty ? 'h-full' : 'mx-auto max-w-3xl'}>
         {isEmpty ? (
-          <EmptyState onSuggest={onSuggest} isAnonymous={isAnonymous} />
+          <EmptyState onChipSelect={onChipSelect} isAnonymous={isAnonymous} />
         ) : (
           <>
             {messages.map((m) => {
@@ -634,6 +706,12 @@ export function ChatConversation({
                       }
                       if (p.type === 'data-press') {
                         const data = (p as { data?: PressData }).data;
+                        // Caller can mark a press as transcript-hidden when a
+                        // server-emitted card already acknowledges it (e.g.
+                        // the contact-form auto-reply). The data-press part
+                        // still lives on the user message for persistence and
+                        // server-side detection; only the visual is omitted.
+                        if (data?.hideTranscriptChip) return null;
                         const label = data?.label ?? 'action';
                         return (
                           <div

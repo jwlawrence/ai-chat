@@ -66,4 +66,39 @@ describe('chart primitive schema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts annotations with x and label', () => {
+    const result = chartPrimitive.propsSchema.safeParse({
+      kind: 'line',
+      data: [
+        { month: 'Jan', v: 1 },
+        { month: 'Feb', v: 2 },
+      ],
+      series: [{ key: 'v' }],
+      xKey: 'month',
+      annotations: [{ x: 'Feb', label: 'Launch' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('caps annotations at 4', () => {
+    const result = chartPrimitive.propsSchema.safeParse({
+      kind: 'line',
+      data: [{ x: 'A', v: 1 }],
+      series: [{ key: 'v' }],
+      xKey: 'x',
+      annotations: Array.from({ length: 5 }, (_, i) => ({ x: 'A', label: `n${i}` })),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts series.endpointLabel', () => {
+    const result = chartPrimitive.propsSchema.safeParse({
+      kind: 'line',
+      data: [{ x: 'A', v: 1 }],
+      series: [{ key: 'v', endpointLabel: '12 active' }],
+      xKey: 'x',
+    });
+    expect(result.success).toBe(true);
+  });
 });

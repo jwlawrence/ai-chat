@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { useChatStatus } from './chat-status-context';
 import { AccountSection, type SidebarUser } from './account-section';
 import { SidebarList } from './sidebar-list';
 
@@ -21,12 +22,30 @@ function Header() {
 }
 
 function NewChatButton({ onClick }: { onClick?: () => void }) {
+  // Hard navigation, not a <Link>. Once a new session is created the chat
+  // page bumps the URL to /chat/<id> via window.history.replaceState (so the
+  // in-flight stream isn't dropped). That leaves Next.js's internal pathname
+  // pinned at /chat even though the URL bar reads /chat/<id>. A normal Link
+  // click back to /chat would then be a no-op because Next.js compares
+  // /chat to /chat. Forcing window.location.assign guarantees a fresh
+  // Chat surface every time.
+  //
+  // Disabled during in-flight turns to prevent tearing an active stream.
+  const { status } = useChatStatus();
+  const isStreaming = status === 'streaming' || status === 'submitted';
   return (
-    <Link href="/chat" onClick={onClick}>
-      <Button className="m-2 w-[calc(100%-1rem)] justify-start" variant="outline">
-        <MessageSquarePlus className="mr-2 size-4" /> New chat
-      </Button>
-    </Link>
+    <Button
+      className="m-2 w-[calc(100%-1rem)] justify-start"
+      variant="outline"
+      disabled={isStreaming}
+      onClick={() => {
+        if (isStreaming) return;
+        onClick?.();
+        window.location.assign('/chat');
+      }}
+    >
+      <MessageSquarePlus className="mr-2 size-4" /> New chat
+    </Button>
   );
 }
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ChatStatusProvider } from '@/components/sidebar/chat-status-context';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { auth } from '@/lib/auth';
 
@@ -12,9 +13,11 @@ export default async function ChatLayout({ children }: { children: ReactNode }) 
       }
     : null;
   return (
-    <div className="flex h-dvh w-full">
-      <Sidebar user={user} />
-      <main className="relative flex min-w-0 flex-1 flex-col">{children}</main>
-    </div>
+    <ChatStatusProvider>
+      <div className="flex h-dvh w-full">
+        <Sidebar user={user} />
+        <main className="relative flex min-w-0 flex-1 flex-col">{children}</main>
+      </div>
+    </ChatStatusProvider>
   );
 }

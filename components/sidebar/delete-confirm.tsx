@@ -38,7 +38,13 @@ export function DeleteConfirm({
 
   return (
     <AlertDialog>
-      <AlertDialogTrigger render={children} />
+      {/*
+        nativeButton={false} because `children` is a DropdownMenuItem, not a
+        native <button>. Without this Base UI warns about button semantics
+        being dropped — it defaults to expecting a real button in the render
+        prop.
+      */}
+      <AlertDialogTrigger nativeButton={false} render={children} />
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
