@@ -1,7 +1,7 @@
 export const MODEL_IDS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'o4-mini'] as const;
 export type ModelId = (typeof MODEL_IDS)[number];
 
-export const DEFAULT_MODEL: ModelId = 'gpt-5.4';
+export const DEFAULT_MODEL: ModelId = 'gpt-5.4-mini';
 
 export const MODEL_LABELS: Record<ModelId, string> = {
   'gpt-5.4': 'GPT-5.4',
