@@ -6,11 +6,11 @@ import { DefaultChatTransport } from 'ai';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from 'swr';
+import { useChatStatus } from '@/components/sidebar/chat-status-context';
 import { DEFAULT_MODEL, type ModelId } from '@/lib/ai/models';
 import { recordToHeaders } from '@/lib/byok/headers';
 import { loadByok } from '@/lib/byok/storage';
 import type { ChipPrompt } from '@/lib/chat/chips';
-import { useChatStatus } from '@/components/sidebar/chat-status-context';
 import { AnonTurnstileGate } from './anon-gate';
 import { ChipDeck } from './chip-deck';
 import { Composer } from './composer';
@@ -90,6 +90,11 @@ export function Chat({
     onFinish: () => {
       // Bump sidebar so updatedAt / title reflect latest.
       mutate('/api/sessions');
+      // Revalidate budget gauge. postflight is awaited inside streamText.onFinish
+      // before the outer stream closes, so the immediate mutate should read fresh
+      // spend. A delayed revalidation covers any edge-case timing drift.
+      mutate('/api/budget');
+      setTimeout(() => mutate('/api/budget'), 1500);
     },
   });
 
@@ -157,7 +162,6 @@ export function Chat({
             status={status}
             model={model}
             modelLocked={modelLocked}
-            sessionId={sessionId}
             onModelChange={setModel}
             onSubmit={({ text, files }) =>
               sendMessage({

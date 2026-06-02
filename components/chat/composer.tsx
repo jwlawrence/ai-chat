@@ -72,7 +72,6 @@ export function Composer({
   status,
   model,
   modelLocked,
-  sessionId,
   onModelChange,
   onSubmit,
   onStop,
@@ -81,7 +80,6 @@ export function Composer({
   status: 'ready' | 'streaming' | 'submitted' | 'error';
   model: ModelId;
   modelLocked: boolean;
-  sessionId: string | undefined;
   onModelChange: (m: ModelId) => void;
   onSubmit: (message: PromptInputMessage) => void;
   onStop: () => void;
@@ -124,7 +122,7 @@ export function Composer({
               disabled={modelLocked || !!disabled}
             />
           ) : null}
-          <UsageMeter sessionId={sessionId} model={model} />
+          <UsageMeter />
         </PromptInputTools>
         {isBusy ? (
           <Button type="button" size="icon" variant="ghost" onClick={onStop} aria-label="Stop">

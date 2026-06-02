@@ -1,60 +1,31 @@
 'use client';
 
-import { useSessions } from '@/hooks/use-sessions';
-import type { ModelId } from '@/lib/ai/models';
-import { estimateCostUSD, MODEL_PRICING } from '@/lib/ai/pricing';
+import { useBudget } from '@/hooks/use-budget';
+import { remainingPctLabel } from '@/lib/budget/usage-fraction';
 import { cn } from '@/lib/utils';
 
-function fmtPct(p: number): string {
-  if (p > 0 && p < 1) return '<1%';
-  return `${Math.round(p)}%`;
-}
-
-function fmtCost(n: number): string {
-  if (n < 0.01) return `<$0.01`;
-  if (n < 1) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-export function UsageMeter({
-  sessionId,
-  model,
-}: {
-  sessionId: string | undefined;
-  model: ModelId;
-}) {
-  const { data: sessions } = useSessions();
-  const session = sessionId ? sessions?.find((s) => s.id === sessionId) : null;
-  const tokensIn = session?.tokensIn ?? 0;
-  const tokensOut = session?.tokensOut ?? 0;
-  const tokensCached = session?.tokensCached ?? 0;
-  const cost = estimateCostUSD(model, { tokensIn, tokensOut, tokensCached });
-
-  // Context-window meter uses input tokens — the running budget against the model's window.
-  // Output tokens come out of the same window but accounting per-turn vs cumulative is fuzzy,
-  // so we keep it simple and approximate.
-  const max = MODEL_PRICING[model].maxContextTokens;
-  const used = tokensIn;
-  const pct = Math.min(100, (used / max) * 100);
-  const warn = pct >= 80;
+export function UsageMeter() {
+  const { data } = useBudget();
+  const usedFraction = data?.usedFraction ?? 0;
+  const pctUsed = Math.min(100, Math.max(0, usedFraction * 100));
+  const warn = usedFraction >= 0.9;
 
   return (
     <div className="flex items-center gap-3 text-muted-foreground text-xs">
-      <div
-        className="flex items-center gap-1.5"
-        title={`${used.toLocaleString()} / ${max.toLocaleString()} input tokens`}
-      >
+      <div className="flex items-center gap-1.5" title="Daily limit — resets 00:00 UTC">
         <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
           <div
+            role="progressbar"
+            aria-valuenow={Math.round(pctUsed)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Daily usage limit"
             className={cn('h-full transition-all', warn ? 'bg-destructive' : 'bg-foreground/60')}
-            style={{ width: `${pct}%` }}
+            style={{ width: `${pctUsed}%` }}
           />
         </div>
-        <span className="tabular-nums">{fmtPct(pct)}</span>
+        <span className="tabular-nums">{remainingPctLabel(usedFraction)}</span>
       </div>
-      <span className="tabular-nums" title={`$${cost.toFixed(4)} so far`}>
-        {fmtCost(cost)}
-      </span>
     </div>
   );
 }
