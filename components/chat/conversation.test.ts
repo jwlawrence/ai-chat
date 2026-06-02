@@ -11,6 +11,7 @@ import {
   buildSubmitFormHandler,
   messageHasPressChip,
   messageHasRenderUI,
+  messageHasRenderableContent,
   messageHasVisibleOutput,
 } from './conversation';
 
@@ -42,6 +43,7 @@ describe('R — submitForm: calls web3forms with accessKey + parsed fields', () 
         name: 'Alice Smith',
         company: 'BigCorp',
         roleType: 'Engineering Manager',
+        email: 'alice@bigcorp.com',
         question: 'Can you ship fast?',
       },
     });
@@ -66,6 +68,7 @@ describe('R — submitForm: calls web3forms with accessKey + parsed fields', () 
       name: 'Alice Smith',
       company: 'BigCorp',
       roleType: 'Engineering Manager',
+      email: 'alice@bigcorp.com',
       question: 'Can you ship fast?',
     });
   });
@@ -87,6 +90,87 @@ describe('R — submitForm: calls web3forms with accessKey + parsed fields', () 
     await handler({ formName: 'newsletter', label: 'Subscribe' });
 
     expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2 — contact form client-side validation (Part B)
+//
+// Valid contact submit proceeds to sendContactFormToEmail + sendMessage.
+// Invalid contact submit (missing/bad email) blocks send, leaves lock open,
+// and writes the error into /_errors/contact/<field>.
+// ---------------------------------------------------------------------------
+
+describe('R2 — submitForm: client-side contact validation', () => {
+  it('INVALID: does not call sendContactFormToEmail or sendMessage when email is missing', async () => {
+    const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
+    const mockSend = vi.mocked(sendContactFormToEmail);
+    mockSend.mockClear();
+
+    const store = createStateStore({
+      contact: {
+        name: 'Alice Smith',
+        company: 'BigCorp',
+        roleType: 'Engineering Manager',
+        // email intentionally absent
+      },
+    });
+    const lockedRef = { current: false };
+    const sendMessage = vi.fn(async () => {});
+    const handler = buildSubmitFormHandler({
+      store,
+      lockedRef,
+      setIsLocked: () => {},
+      sendMessage,
+      specRoot: 'form-card',
+    });
+
+    await handler({ formName: 'contact', label: 'Submit contact' });
+
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(lockedRef.current).toBe(false);
+    const emailError = store.get('/_errors/contact/email');
+    expect(typeof emailError).toBe('string');
+    expect((emailError as string).length).toBeGreaterThan(0);
+  });
+
+  it('VALID: clears all /_errors/contact/* and calls sendContactFormToEmail + sendMessage', async () => {
+    const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
+    const mockSend = vi.mocked(sendContactFormToEmail);
+    mockSend.mockClear();
+
+    // Seed a pre-existing error to confirm it gets cleared on valid submit.
+    const store = createStateStore({
+      contact: {
+        name: 'Alice Smith',
+        company: 'BigCorp',
+        roleType: 'Engineering Manager',
+        email: 'alice@bigcorp.com',
+      },
+      '_errors': {
+        contact: { email: 'Enter your email' },
+      },
+    });
+    const lockedRef = { current: false };
+    const sendMessage = vi.fn(async () => {});
+    const handler = buildSubmitFormHandler({
+      store,
+      lockedRef,
+      setIsLocked: () => {},
+      sendMessage,
+      specRoot: 'form-card',
+    });
+
+    await handler({ formName: 'contact', label: 'Submit contact' });
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    // All error paths must be cleared (undefined) after valid submit.
+    expect(store.get('/_errors/contact/email')).toBeUndefined();
+    expect(store.get('/_errors/contact/name')).toBeUndefined();
+    expect(store.get('/_errors/contact/company')).toBeUndefined();
+    expect(store.get('/_errors/contact/roleType')).toBeUndefined();
   });
 });
 
@@ -405,5 +489,81 @@ describe('messageHasVisibleOutput — I4', () => {
       { type: 'tool-renderUI', toolCallId: 'tc', input: {} },
     ] as unknown as UIMessage['parts']);
     expect(messageHasVisibleOutput(m)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 3: messageHasRenderableContent — empty-bubble guard
+// ---------------------------------------------------------------------------
+
+describe('messageHasRenderableContent', () => {
+  it('returns false for a contact-submit user message (data-press hideTranscriptChip + text)', () => {
+    // THE bug case: both parts render nothing, so the enclosing <Message> should be skipped.
+    const m = makeMessage(
+      [
+        {
+          type: 'data-press',
+          data: {
+            action: 'submitForm',
+            label: 'Submitted contact',
+            hideTranscriptChip: true,
+            mode: 'model',
+          } satisfies PressData,
+        } as unknown as UIMessage['parts'][number],
+        { type: 'text', text: '[Submitted form contact: {}]' },
+      ] as UIMessage['parts'],
+      'user',
+    );
+    expect(messageHasRenderableContent(m)).toBe(false);
+  });
+
+  it('returns true for a press chip without hideTranscriptChip', () => {
+    const m = makeMessage(
+      [
+        {
+          type: 'data-press',
+          data: { action: 'sendToModel', label: 'Continue', mode: 'model' } satisfies PressData,
+        } as unknown as UIMessage['parts'][number],
+        { type: 'text', text: '[User pressed: Continue]' },
+      ] as UIMessage['parts'],
+      'user',
+    );
+    expect(messageHasRenderableContent(m)).toBe(true);
+  });
+
+  it('returns true for an assistant message with tool-renderUI output-available', () => {
+    const m = makeMessage(
+      [
+        {
+          type: 'tool-renderUI',
+          state: 'output-available',
+          toolCallId: 'tc',
+          input: {},
+          output: {},
+        },
+      ] as unknown as UIMessage['parts'],
+      'assistant',
+    );
+    expect(messageHasRenderableContent(m)).toBe(true);
+  });
+
+  it('returns true for a message with non-empty text', () => {
+    const m = makeMessage([{ type: 'text', text: 'hi' }] as UIMessage['parts'], 'user');
+    expect(messageHasRenderableContent(m)).toBe(true);
+  });
+
+  it('returns false for a message with empty text only', () => {
+    const m = makeMessage([{ type: 'text', text: '' }] as UIMessage['parts'], 'user');
+    expect(messageHasRenderableContent(m)).toBe(false);
+  });
+
+  it('returns false for an assistant message with tool-renderUI input-streaming (not yet visible)', () => {
+    const m = makeMessage(
+      [
+        { type: 'tool-renderUI', state: 'input-streaming', toolCallId: 'tc', input: {} },
+      ] as unknown as UIMessage['parts'],
+      'assistant',
+    );
+    expect(messageHasRenderableContent(m)).toBe(false);
   });
 });

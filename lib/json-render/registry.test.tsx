@@ -812,6 +812,110 @@ describe('registry — remaining primitives', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Part C: Field error display — inline red message + aria-invalid
+// ---------------------------------------------------------------------------
+
+describe('registry — Part C: field error display', () => {
+  it('shows error text and aria-invalid on Input when /_errors/contact/email is set', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'contact' },
+          children: ['email-input'],
+        },
+        'email-input': {
+          type: 'Input',
+          props: { name: 'email', label: 'Email', kind: 'email' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore({ contact: { email: '' }, '_errors': { contact: { email: 'Enter a valid email' } } });
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    expect(screen.getByText('Enter a valid email')).toBeInTheDocument();
+    const input = screen.getByLabelText('Email') as HTMLInputElement;
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('clears Input error when the user edits the field', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'contact' },
+          children: ['email-input'],
+        },
+        'email-input': {
+          type: 'Input',
+          props: { name: 'email', label: 'Email', kind: 'email' },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore({ contact: { email: '' }, '_errors': { contact: { email: 'Enter a valid email' } } });
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    // Error is present before edit.
+    expect(screen.getByText('Enter a valid email')).toBeInTheDocument();
+
+    // Simulate user correcting the field.
+    const input = screen.getByLabelText('Email') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'user@example.com' } });
+
+    // Error must be removed after edit.
+    expect(screen.queryByText('Enter a valid email')).not.toBeInTheDocument();
+  });
+
+  it('shows error text and aria-invalid on Select when /_errors/contact/roleType is set', () => {
+    const spec: Spec = {
+      root: 'form-root',
+      elements: {
+        'form-root': {
+          type: 'Form',
+          props: { name: 'contact' },
+          children: ['role-select'],
+        },
+        'role-select': {
+          type: 'Select',
+          props: {
+            name: 'roleType',
+            label: 'Role type',
+            options: [
+              { value: 'em', label: 'Engineering Manager' },
+              { value: 'ic', label: 'Individual Contributor' },
+            ],
+          },
+          children: [],
+        },
+      },
+    };
+    const store = createStateStore({ contact: { roleType: '' }, '_errors': { contact: { roleType: 'Select a role' } } });
+    render(
+      <JSONUIProvider registry={registry} store={store}>
+        <SpecRenderer spec={spec} registry={registry}>
+          <Renderer spec={spec} registry={registry} />
+        </SpecRenderer>
+      </JSONUIProvider>,
+    );
+    expect(screen.getByText('Select a role')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // E1: Form-state stability — spec patch preserves in-progress input values
 // ---------------------------------------------------------------------------
 

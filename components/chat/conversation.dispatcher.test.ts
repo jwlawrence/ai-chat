@@ -200,8 +200,17 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
     vi.mocked(toast.error).mockClear();
   });
 
+  // All contact-form tests need all required fields to pass the client-side
+  // validation gate introduced in Part B. Using a complete valid fixture.
+  const validContactData = {
+    name: 'Alice Smith',
+    company: 'BigCorp',
+    roleType: 'Engineering Manager',
+    email: 'alice@bigcorp.com',
+  };
+
   it('calls sendMessage with correct parts and locks the card', async () => {
-    const store = makeStore({ contact: { email: 'a@b.com', role: 'admin' } });
+    const store = makeStore({ contact: { ...validContactData } });
     const lockedRef = { current: false };
     const isLockedValues: boolean[] = [];
     const setIsLocked = (v: boolean) => {
@@ -232,7 +241,7 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
     expect(chipPart?.data?.action).toBe('submitForm');
     expect(chipPart?.data?.mode).toBe('model');
     expect(chipPart?.data?.sourceRootId).toBe('form-card');
-    expect(chipPart?.data?.data).toEqual({ email: 'a@b.com', role: 'admin' });
+    expect(chipPart?.data?.data).toMatchObject(validContactData);
 
     // Card should be locked after successful send
     expect(lockedRef.current).toBe(true);
@@ -240,7 +249,7 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
   });
 
   it('locks the card immediately on press before sendMessage resolves', async () => {
-    const store = makeStore({ contact: { email: 'a@b.com' } });
+    const store = makeStore({ contact: { ...validContactData } });
     const lockedRef = { current: false };
     let lockedDuringSend = false;
     const setIsLocked = vi.fn();
@@ -263,7 +272,7 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
   });
 
   it('rolls back lock when sendMessage rejects', async () => {
-    const store = makeStore({ contact: { email: 'a@b.com' } });
+    const store = makeStore({ contact: { ...validContactData } });
     const lockedRef = { current: false };
     const isLockedValues: boolean[] = [];
     const setIsLocked = (v: boolean) => {
@@ -288,7 +297,7 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
     expect(lockedRef.current).toBe(false);
   });
 
-  it('does not call sendMessage and resets lock for empty formName', async () => {
+  it('does not call sendMessage and never locks for empty formName', async () => {
     const store = makeStore({});
     const lockedRef = { current: false };
     const isLockedValues: boolean[] = [];
@@ -311,6 +320,7 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
 
     expect(sendMessage).not.toHaveBeenCalled();
     expect(lockedRef.current).toBe(false);
-    expect(isLockedValues).toEqual([true, false]);
+    // Lock is not acquired for a missing formName — early return before locking.
+    expect(isLockedValues).toEqual([]);
   });
 });

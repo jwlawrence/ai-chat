@@ -6,6 +6,7 @@ const BASE: ContactFormSubmission = {
   name: 'Jane Doe',
   company: 'Acme',
   roleType: 'Tech Lead Manager',
+  email: 'jane@acme.com',
 };
 
 function getTitle(spec: ReturnType<typeof buildAutoReplySpec>): string {

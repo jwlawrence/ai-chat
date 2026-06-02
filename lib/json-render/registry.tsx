@@ -471,6 +471,7 @@ export const { registry } = defineRegistry(catalog, {
       const formCtx = useFormContext();
       const store = useStateStore();
       const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      const errorPath = formCtx ? `/_errors/${formCtx.name}/${props.name}` : null;
       // Seed the store on mount if the path has no value yet.
       // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath change matters
       useEffect(() => {
@@ -484,6 +485,7 @@ export const { registry } = defineRegistry(catalog, {
         );
       }
       const value = statePath ? ((store.get(statePath) as string | undefined) ?? '') : undefined;
+      const error = errorPath ? (store.get(errorPath) as string | undefined) : undefined;
       return (
         <div className="space-y-1">
           {props.label && (
@@ -497,14 +499,23 @@ export const { registry } = defineRegistry(catalog, {
             type={props.kind ?? 'text'}
             placeholder={ds(props.placeholder)}
             disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${props.name}-error` : undefined}
             {...(statePath
               ? {
                   value,
-                  onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
-                    store.set(statePath, e.target.value),
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                    store.set(statePath, e.target.value);
+                    if (errorPath) store.set(errorPath, undefined);
+                  },
                 }
               : {})}
           />
+          {error ? (
+            <p id={`${props.name}-error`} className="text-destructive text-xs">
+              {error}
+            </p>
+          ) : null}
         </div>
       );
     }) satisfies ComponentFn<typeof catalog, 'Input'>,
@@ -518,6 +529,7 @@ export const { registry } = defineRegistry(catalog, {
       const formCtx = useFormContext();
       const store = useStateStore();
       const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      const errorPath = formCtx ? `/_errors/${formCtx.name}/${props.name}` : null;
       // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath change matters
       useEffect(() => {
         if (statePath && store.get(statePath) === undefined) {
@@ -530,6 +542,7 @@ export const { registry } = defineRegistry(catalog, {
         );
       }
       const value = statePath ? ((store.get(statePath) as string | undefined) ?? '') : undefined;
+      const error = errorPath ? (store.get(errorPath) as string | undefined) : undefined;
       return (
         <div className="space-y-1">
           {props.label && (
@@ -543,14 +556,23 @@ export const { registry } = defineRegistry(catalog, {
             rows={props.rows ?? 4}
             placeholder={ds(props.placeholder)}
             disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${props.name}-error` : undefined}
             {...(statePath
               ? {
                   value,
-                  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    store.set(statePath, e.target.value),
+                  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                    store.set(statePath, e.target.value);
+                    if (errorPath) store.set(errorPath, undefined);
+                  },
                 }
               : {})}
           />
+          {error ? (
+            <p id={`${props.name}-error`} className="text-destructive text-xs">
+              {error}
+            </p>
+          ) : null}
         </div>
       );
     }) satisfies ComponentFn<typeof catalog, 'Textarea'>,
@@ -561,6 +583,7 @@ export const { registry } = defineRegistry(catalog, {
       const formCtx = useFormContext();
       const store = useStateStore();
       const statePath = formCtx ? `/${formCtx.name}/${props.name}` : null;
+      const errorPath = formCtx ? `/_errors/${formCtx.name}/${props.name}` : null;
       const defaultSelectValue = ds(props.options[0]?.value);
       // Seed the store on mount if the path has no value yet.
       // biome-ignore lint/correctness/useExhaustiveDependencies: store identity is stable per card mount; only statePath matters
@@ -576,6 +599,7 @@ export const { registry } = defineRegistry(catalog, {
       }
       const storeValue = statePath ? (store.get(statePath) as string | undefined) : undefined;
       const selectValue = storeValue ?? defaultSelectValue ?? '';
+      const error = errorPath ? (store.get(errorPath) as string | undefined) : undefined;
       return (
         <div className="space-y-1">
           {props.label && <span className="text-sm font-medium">{ds(props.label)}</span>}
@@ -583,9 +607,21 @@ export const { registry } = defineRegistry(catalog, {
             name={props.name}
             disabled={db((props as { disabled?: boolean | { $state: string } }).disabled) ?? false}
             value={statePath ? selectValue : undefined}
-            onValueChange={statePath ? (v) => store.set(statePath, v) : undefined}
+            onValueChange={
+              statePath
+                ? (v) => {
+                    store.set(statePath, v);
+                    if (errorPath) store.set(errorPath, undefined);
+                  }
+                : undefined
+            }
           >
-            <SelectTrigger className="w-full" aria-label={ds(props.label)}>
+            <SelectTrigger
+              className="w-full"
+              aria-label={ds(props.label)}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? `${props.name}-error` : undefined}
+            >
               {/*
                 base-ui's SelectValue defaults to the raw value when no
                 children render function is given, so a user picking
@@ -608,6 +644,11 @@ export const { registry } = defineRegistry(catalog, {
               ))}
             </SelectContent>
           </Select>
+          {error ? (
+            <p id={`${props.name}-error`} className="text-destructive text-xs">
+              {error}
+            </p>
+          ) : null}
         </div>
       );
     }) satisfies ComponentFn<typeof catalog, 'Select'>,

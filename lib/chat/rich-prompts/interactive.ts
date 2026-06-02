@@ -1,8 +1,8 @@
 /**
  * Rich prompt for the "Build a form" chip.
- * Produces the "Tell Josh about the role." contact form (Name / Company /
- * Role type select / optional Question textarea / Send button wired to
- * submitForm with formName="contact"). The chat route detects the
+ * Produces the "Tell Josh about the role." contact form (Name / Email /
+ * Company / Role type select / optional Question textarea / Send button
+ * wired to submitForm with formName="contact"). The chat route detects the
  * resulting submit and emits a deterministic auto-reply card server-side.
  */
 export const INTERACTIVE_RICH_PROMPT = [
@@ -11,24 +11,26 @@ export const INTERACTIVE_RICH_PROMPT = [
   '',
   '  1. A muted Text subtitle: "He responds within one business day."',
   '',
-  '  2. A Form (name="contact") with four fields and one submit Button,',
+  '  2. A Form (name="contact") with five fields and one submit Button,',
   '     rendered in this exact order:',
   '       a. Input  name="name"      label="Your name"',
   '                 placeholder="Jane Doe"          kind="text"',
-  '       b. Input  name="company"   label="Company"',
+  '       b. Input  name="email"     label="Your email"',
+  '                 placeholder="jane@acme.com"     kind="email"',
+  '       c. Input  name="company"   label="Company"',
   '                 placeholder="Acme Corp"         kind="text"',
-  '       c. Select name="roleType"  label="The role you\'re hiring for" with options:',
+  '       d. Select name="roleType"  label="The role you\'re hiring for" with options:',
   '            [{"value":"Engineering Manager","label":"Engineering Manager"},',
   '             {"value":"Tech Lead Manager","label":"Tech Lead Manager"},',
   '             {"value":"Staff Engineer","label":"Staff Engineer"},',
   '             {"value":"Other","label":"Other"}]',
   '          The option values match the labels verbatim so the submitted',
   '          form data carries human-readable text downstream.',
-  '       d. Textarea name="question"',
+  '       e. Textarea name="question"',
   '                  label="One thing you want to know about Josh before scheduling a call"',
   '                  placeholder="e.g. Does your platform work translate to a consumer-product team?"',
   '                  rows=3',
-  '       e. Button label="Send" variant="primary" with on.press:',
+  '       f. Button label="Send" variant="primary" with on.press:',
   '            { "action": "submitForm", "params": { "formName": "contact" } }',
   '          The `on` block goes at the element level (alongside type/props/children),',
   '          NOT inside props.',
@@ -50,8 +52,9 @@ export const INTERACTIVE_RICH_PROMPT = [
   '  "elements": {',
   '    "form-card": { "type": "Card", "props": { "title": "Tell Josh about the role." }, "children": ["subtitle", "form"] },',
   '    "subtitle": { "type": "Text", "props": { "text": "He responds within one business day.", "muted": true }, "children": [] },',
-  '    "form": { "type": "Form", "props": { "name": "contact" }, "children": ["f-name", "f-company", "f-roleType", "f-question", "f-send"] },',
+  '    "form": { "type": "Form", "props": { "name": "contact" }, "children": ["f-name", "f-email", "f-company", "f-roleType", "f-question", "f-send"] },',
   '    "f-name": { "type": "Input", "props": { "name": "name", "label": "Your name", "placeholder": "Jane Doe", "kind": "text" }, "children": [] },',
+  '    "f-email": { "type": "Input", "props": { "name": "email", "label": "Your email", "placeholder": "jane@acme.com", "kind": "email" }, "children": [] },',
   '    "f-company": { "type": "Input", "props": { "name": "company", "label": "Company", "placeholder": "Acme Corp", "kind": "text" }, "children": [] },',
   '    "f-roleType": { "type": "Select", "props": { "name": "roleType", "label": "The role you\'re hiring for", "options": [{"value":"Engineering Manager","label":"Engineering Manager"},{"value":"Tech Lead Manager","label":"Tech Lead Manager"},{"value":"Staff Engineer","label":"Staff Engineer"},{"value":"Other","label":"Other"}] }, "children": [] },',
   '    "f-question": { "type": "Textarea", "props": { "name": "question", "label": "One thing you want to know about Josh before scheduling a call", "placeholder": "e.g. Does your platform work translate to a consumer-product team?", "rows": 3 }, "children": [] },',

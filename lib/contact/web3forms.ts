@@ -21,6 +21,7 @@
 
 export type ContactFormSubmission = {
   name: string;
+  email: string;
   company: string;
   roleType: string;
   question?: string;
@@ -68,6 +69,7 @@ export async function sendContactFormToEmail(
   const subject = `Portfolio contact from ${submission.company} (${submission.roleType})`;
   const messageLines = [
     `Name: ${submission.name}`,
+    `Email: ${submission.email}`,
     `Company: ${submission.company}`,
     `Role type: ${submission.roleType}`,
   ];
@@ -86,10 +88,10 @@ export async function sendContactFormToEmail(
         // `from_name` for compatibility with templates that key off it.
         name: submission.name,
         from_name: submission.name,
-        // Required by Web3Forms (reply-to + spam scoring). We don't collect
-        // the visitor's email; this RFC-reserved placeholder satisfies the
-        // validator without bouncing a real inbox.
-        email: 'noreply@example.com',
+        // The visitor's email — used as the Web3Forms reply-to address and
+        // for spam scoring. Also set as `replyto` for explicitness.
+        email: submission.email,
+        replyto: submission.email,
         message: messageLines.join('\n'),
         // Honeypot anti-spam field stays empty for a legitimate submission.
         botcheck: '',
@@ -126,12 +128,14 @@ export async function sendContactFormToEmail(
  */
 export function parseContactFormFields(raw: Record<string, unknown>): ContactFormSubmission | null {
   const name = boundedStrOrNull(raw.name, CONTACT_FIELD_MAX);
+  const email = boundedEmailOrNull(raw.email, CONTACT_FIELD_MAX);
   const company = boundedStrOrNull(raw.company, CONTACT_FIELD_MAX);
   const roleType = boundedStrOrNull(raw.roleType, CONTACT_FIELD_MAX);
-  if (!name || !company || !roleType) return null;
+  if (!name || !email || !company || !roleType) return null;
   const question = boundedStrOrNull(raw.question, CONTACT_QUESTION_MAX);
   return {
     name,
+    email,
     company,
     roleType,
     ...(question ? { question } : {}),
@@ -212,10 +216,73 @@ export function extractContactSubmissionId(
   return null;
 }
 
+// Permissive email check: requires at least one non-whitespace/@ char on each
+// side of @ and a dot in the domain part. Keeps out obvious garbage
+// (no-@, a@b, space@b.com) without rejecting valid edge-case addresses.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function boundedStrOrNull(v: unknown, maxLength: number): string | null {
   if (typeof v !== 'string') return null;
   const trimmed = v.trim();
   if (trimmed.length === 0) return null;
   if (trimmed.length > maxLength) return null;
   return trimmed;
+}
+
+/** Validates that a value is a non-empty string that looks like an email address. */
+function boundedEmailOrNull(v: unknown, maxLength: number): string | null {
+  const trimmed = boundedStrOrNull(v, maxLength);
+  if (!trimmed) return null;
+  if (!EMAIL_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// Client-side field validation (single source of truth alongside parseContactFormFields)
+// ---------------------------------------------------------------------------
+
+export const CONTACT_REQUIRED_FIELDS = ['name', 'email', 'company', 'roleType'] as const;
+export type ContactErrorField = (typeof CONTACT_REQUIRED_FIELDS)[number];
+
+/**
+ * Field-level validation companion to parseContactFormFields. Returns a map
+ * of field → human error message for each invalid field; empty object means
+ * all valid. Same rules as parseContactFormFields so the two never drift.
+ */
+export function validateContactFields(
+  raw: Record<string, unknown>,
+): Partial<Record<ContactErrorField, string>> {
+  const errors: Partial<Record<ContactErrorField, string>> = {};
+
+  // name
+  const nameRaw = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (nameRaw.length === 0) {
+    errors.name = 'Enter your name';
+  } else if (nameRaw.length > CONTACT_FIELD_MAX) {
+    errors.name = 'Name is too long';
+  }
+
+  // email
+  const emailRaw = typeof raw.email === 'string' ? raw.email.trim() : '';
+  if (emailRaw.length === 0) {
+    errors.email = 'Enter your email';
+  } else if (emailRaw.length > CONTACT_FIELD_MAX || !EMAIL_RE.test(emailRaw)) {
+    errors.email = 'Enter a valid email';
+  }
+
+  // company
+  const companyRaw = typeof raw.company === 'string' ? raw.company.trim() : '';
+  if (companyRaw.length === 0) {
+    errors.company = 'Enter your company';
+  } else if (companyRaw.length > CONTACT_FIELD_MAX) {
+    errors.company = 'Company is too long';
+  }
+
+  // roleType
+  const roleTypeRaw = typeof raw.roleType === 'string' ? raw.roleType.trim() : '';
+  if (roleTypeRaw.length === 0) {
+    errors.roleType = 'Select a role';
+  }
+
+  return errors;
 }

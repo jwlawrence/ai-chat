@@ -17,7 +17,12 @@ import { Message, MessageContent, MessageResponse } from '@/components/ai-elemen
 import { Spinner } from '@/components/ui/spinner';
 import { specSchema } from '@/lib/ai/tools/render-ui';
 import type { ChipPrompt } from '@/lib/chat/chips';
-import { parseContactFormFields, sendContactFormToEmail } from '@/lib/contact/web3forms';
+import {
+  CONTACT_REQUIRED_FIELDS,
+  parseContactFormFields,
+  sendContactFormToEmail,
+  validateContactFields,
+} from '@/lib/contact/web3forms';
 import { ACTION_REGISTRY } from '@/lib/json-render/catalog';
 import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
 import { ChipDeck } from './chip-deck';
@@ -33,6 +38,28 @@ type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
  */
 export function messageHasRenderUI(m: UIMessage): boolean {
   return (m.parts ?? []).some((p) => p.type === 'tool-renderUI');
+}
+
+/**
+ * Returns true when a message has at least one part that will produce a
+ * visible element in the conversation render map. Mirrors the per-part render
+ * decisions in `messages.map` so the enclosing `<Message>` bubble can be
+ * skipped entirely when all parts would return null — preventing empty
+ * right-aligned bubbles (e.g. a contact-form submit that has both a
+ * `hideTranscriptChip` data-press and a companion text part suppressed by
+ * `hasPressChip`).
+ */
+export function messageHasRenderableContent(m: UIMessage): boolean {
+  const hasRenderUI = messageHasRenderUI(m);
+  const hasPressChip = messageHasPressChip(m);
+  return (m.parts ?? []).some((p) => {
+    if (p.type === 'text') return !(hasRenderUI || hasPressChip) && p.text.length > 0;
+    if (p.type === 'data-press') return !((p as { data?: PressData }).data?.hideTranscriptChip);
+    if (p.type === 'file') return p.mediaType?.startsWith('image/') ?? false;
+    if (p.type === 'tool-webSearch') return true;
+    if (p.type === 'tool-renderUI') return (p as { state?: string }).state === 'output-available';
+    return false;
+  });
 }
 
 /**
@@ -284,16 +311,30 @@ export function buildSubmitFormHandler(opts: {
 }): (params: Record<string, unknown>) => Promise<void> {
   const { store, lockedRef, setIsLocked, sendMessage, specRoot } = opts;
   return async (params: Record<string, unknown>) => {
+    // Re-entry guard — must stay at the very top.
     if (lockedRef.current) return;
+
+    const formName = String(params.formName ?? '');
+    if (!formName) return;
+
+    const formData = (store.get(`/${formName}`) as Record<string, unknown> | undefined) ?? {};
+
+    // Contact form: run client-side validation BEFORE acquiring the lock or
+    // sending anything. Errors are written to /_errors/contact/<field> so
+    // field components can display them inline without touching the form data
+    // itself. If any field is invalid, return early — the card stays editable.
+    if (formName === 'contact') {
+      const errors = validateContactFields(formData);
+      for (const field of CONTACT_REQUIRED_FIELDS) {
+        store.set(`/_errors/contact/${field}`, errors[field] ?? undefined);
+      }
+      if (Object.keys(errors).length > 0) return;
+    }
+
+    // All validation passed (or non-contact form) — acquire lock and proceed.
     lockedRef.current = true;
     setIsLocked(true);
-    const formName = String(params.formName ?? '');
-    if (!formName) {
-      lockedRef.current = false;
-      setIsLocked(false);
-      return;
-    }
-    const formData = (store.get(`/${formName}`) as Record<string, unknown> | undefined) ?? {};
+
     const label = String(params.label ?? `Submitted ${formName}`);
     const message = typeof params.message === 'string' ? params.message : undefined;
     const modelText = [
@@ -688,6 +729,7 @@ export function ChatConversation({
             {messages.map((m) => {
               const hasRenderUI = messageHasRenderUI(m);
               const hasPressChip = messageHasPressChip(m);
+              if (!messageHasRenderableContent(m)) return null;
               return (
                 <Message key={m.id} from={m.role}>
                   {/* renderUI cards need room to breathe — MessageContent's default w-fit

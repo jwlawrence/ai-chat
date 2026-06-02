@@ -65,6 +65,7 @@ async function contactSubmitRequest(overrides: SubmitOverrides = {}) {
     name: 'Jane Doe',
     company: 'Acme',
     roleType: 'Engineering Manager',
+    email: 'jane@acme.com',
     question: 'How fast can you ship?',
   };
   const submissionId = overrides.submissionId ?? `s-${Math.random().toString(36).slice(2)}`;
@@ -142,7 +143,7 @@ describe('chat route — contact form submission', () => {
   it('omits the question summary when the question field is absent', async () => {
     const res = await POST(
       await contactSubmitRequest({
-        fields: { name: 'Sam Lee', company: 'Beta', roleType: 'Staff Engineer' },
+        fields: { name: 'Sam Lee', company: 'Beta', roleType: 'Staff Engineer', email: 'sam@beta.com' },
       }),
     );
     const body = await res.text();
@@ -209,7 +210,7 @@ describe('chat route — contact form submission', () => {
                 data: {
                   action: 'submitForm',
                   formName: 'contact',
-                  data: { name: 'X', company: 'Y', roleType: 'Z' },
+                  data: { name: 'X', company: 'Y', roleType: 'Z', email: 'x@y.com' },
                 },
               },
               { type: 'text', text: 'submit' },
@@ -241,7 +242,7 @@ describe('chat route — contact form submission', () => {
                 data: {
                   action: 'submitForm',
                   formName: 'contact',
-                  data: { name: 'Pat', company: 'Co', roleType: 'TLM' },
+                  data: { name: 'Pat', company: 'Co', roleType: 'TLM', email: 'pat@co.com' },
                 },
               },
               { type: 'text', text: 'submit' },
