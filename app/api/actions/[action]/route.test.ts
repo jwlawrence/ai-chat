@@ -242,4 +242,62 @@ describe('POST /api/actions/[action] — signInWith', () => {
     const json = await res.json();
     expect(json.error).toBe('invalid params');
   });
+
+  it('accepts a valid relative callbackUrl and appends it to redirectTo', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'google',
+          callbackUrl: '/chat/32790581-e8ba-42e7-af11-deed18ff6b8e',
+        }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.redirectTo).toBe(
+      '/api/auth/signin/google?callbackUrl=%2Fchat%2F32790581-e8ba-42e7-af11-deed18ff6b8e',
+    );
+  });
+
+  it('rejects callbackUrl: "https://evil.com" (absolute URL)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackUrl: 'https://evil.com' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('invalid params');
+  });
+
+  it('rejects callbackUrl: "//evil.com" (protocol-relative URL)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackUrl: '//evil.com' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('invalid params');
+  });
+
+  it('rejects callbackUrl: "/\\\\evil.com" (backslash form)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/actions/signInWith', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'google', callbackUrl: '/\\evil.com' }),
+      }),
+      { params: Promise.resolve({ action: 'signInWith' }) },
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('invalid params');
+  });
 });

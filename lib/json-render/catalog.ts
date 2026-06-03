@@ -278,7 +278,6 @@ export const catalog = defineCatalog(schema, {
       description:
         'A cell inside a Grid. Wraps any content; controls its own colSpan and rowSpan. On mobile every cell collapses to a single column.',
     },
-
   },
 });
 
@@ -389,6 +388,11 @@ export const ACTION_REGISTRY = new Map<string, ActionDef>([
         'Initiate OAuth sign-in with the named provider. POSTs to /api/actions/signInWith; server returns { redirectTo }; client navigates via window.location.assign after same-origin URL validation. Card locks on press (navigation is destructive).',
       params: z.object({
         provider: z.enum(['google', 'github']).describe('OAuth provider id'),
+        callbackUrl: z
+          .string()
+          .regex(/^\/(?![/\\])/, 'must be a relative path')
+          .optional()
+          .describe('Relative path to return to after sign-in'),
       }),
     },
   ],

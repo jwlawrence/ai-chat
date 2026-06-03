@@ -34,11 +34,16 @@ import {
   countMessages,
   createSession,
   getSession,
+  isUserOwnedSession,
   renameSession,
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
-import { buildSignInSpec, writeServerCard } from '@/lib/json-render/server-card';
+import {
+  buildSignInResumeSpec,
+  buildSignInSpec,
+  writeServerCard,
+} from '@/lib/json-render/server-card';
 import { createStreamOnFinish } from './on-finish';
 
 export const runtime = 'nodejs';
@@ -58,6 +63,42 @@ function readCookie(cookieHeader: string, name: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * When an anonymous actor provides a sessionId that resolves to null (because
+ * getSession gates on ownership), check whether the session actually exists but
+ * is user-owned. If so, stream a sign-in-resume card instead of returning a 404.
+ *
+ * Returns a Response (the sign-in stream) when the caller should short-circuit,
+ * or null when the 404 path should proceed.
+ *
+ * Intentionally omits the `data-session` chunk: the caller already holds the
+ * session id and we never reassign it to the anonymous actor. Intentionally has
+ * no `onFinish` persistence: the conversation already exists under the user's
+ * account; nothing new needs to be written for this unauthenticated probe.
+ */
+async function maybeSignInResumeResponse(
+  sessionId: string,
+  userId: string | null,
+  incoming: UIMessage[],
+): Promise<Response | null> {
+  if (userId !== null) return null;
+  if (!(await isUserOwnedSession(sessionId))) return null;
+
+  const spec = buildSignInResumeSpec(sessionId);
+  const toolCallId = `injected-${crypto.randomUUID()}`;
+  const stream = createUIMessageStream({
+    execute: ({ writer }) => {
+      try {
+        writeServerCard(writer, spec, toolCallId);
+      } catch (err) {
+        console.error('[session-resume] writeServerCard failed', err);
+      }
+    },
+    originalMessages: incoming,
+  });
+  return createUIMessageStreamResponse({ stream });
 }
 
 const BodySchema = z.object({
@@ -292,7 +333,11 @@ export async function POST(req: Request) {
     let isNewWallSession = false;
     if (body.sessionId) {
       const session = await getSession(body.sessionId, userId);
-      if (!session) return new Response('Session not found', { status: 404 });
+      if (!session) {
+        const resumeResponse = await maybeSignInResumeResponse(body.sessionId, userId, incoming);
+        if (resumeResponse) return resumeResponse;
+        return new Response('Session not found', { status: 404 });
+      }
       wallSessionId = session.id;
     } else {
       const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
@@ -371,7 +416,11 @@ export async function POST(req: Request) {
 
   if (body.sessionId) {
     const session = await getSession(body.sessionId, userId);
-    if (!session) return new Response('Session not found', { status: 404 });
+    if (!session) {
+      const resumeResponse = await maybeSignInResumeResponse(body.sessionId, userId, incoming);
+      if (resumeResponse) return resumeResponse;
+      return new Response('Session not found', { status: 404 });
+    }
     if (!isModelId(session.model)) return new Response('Bad model on session', { status: 500 });
     sessionId = session.id;
     model = session.model;

@@ -36,12 +36,23 @@ export const endpointHandlers = new Map<string, (params: unknown) => Promise<Res
     'signInWith',
     (params: unknown) => {
       // ACTION_REGISTRY's z.enum(['google','github']) already validated this.
-      const { provider } = params as { provider: 'google' | 'github' };
+      const { provider, callbackUrl } = params as {
+        provider: 'google' | 'github';
+        callbackUrl?: string;
+      };
       // Relative URL — client (window.location.assign) resolves against current origin.
       // This keeps the handler signature pure (no req) while letting BYOK-style
       // header dependencies live in their own modules. Trailing path matches
       // NextAuth's signin route convention.
-      return Response.json({ redirectTo: `/api/auth/signin/${provider}` });
+      const base = `/api/auth/signin/${provider}`;
+      // Mirror Auth.js's same-origin constraint: only honor relative paths that
+      // don't start with // or \ (backstops the schema regex for belt-and-suspenders).
+      const safeCallback =
+        callbackUrl && /^\/(?![/\\])/.test(callbackUrl) ? callbackUrl : undefined;
+      const redirectTo = safeCallback
+        ? `${base}?callbackUrl=${encodeURIComponent(safeCallback)}`
+        : base;
+      return Response.json({ redirectTo });
     },
   ],
 ]);

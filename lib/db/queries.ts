@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from './client';
 import { chatSessions, messages, type NewDbMessage, type Session } from './schema';
 
@@ -31,6 +31,21 @@ export async function getSession(id: string, userId: string | null): Promise<Ses
     )
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Returns true when a session row with the given id exists AND is user-owned
+ * (user_id IS NOT NULL). Used to distinguish "user-owned session accessed while
+ * logged out" (→ sign-in redirect) from "session truly missing or anon-owned"
+ * (→ 404). No ownership gate — intentionally queries by id only.
+ */
+export async function isUserOwnedSession(id: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: chatSessions.id })
+    .from(chatSessions)
+    .where(and(eq(chatSessions.id, id), isNotNull(chatSessions.userId)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export async function createSession(input: {

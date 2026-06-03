@@ -45,6 +45,49 @@ export function buildSignInSpec(): Spec {
 }
 
 /**
+ * Sign-in card variant for the "logged-out user tries to resume their own session"
+ * case. Identical layout to `buildSignInSpec` but each provider button carries a
+ * `callbackUrl` param so the user is returned to the session after sign-in.
+ */
+export function buildSignInResumeSpec(sessionId: string): Spec {
+  const callbackUrl = `/chat/${sessionId}`;
+  return {
+    root: 'card',
+    elements: {
+      card: {
+        type: 'Card',
+        props: { title: 'Sign in to continue' },
+        children: ['heading', 'text', 'google', 'github'],
+      },
+      heading: {
+        type: 'Heading',
+        props: { level: 2, text: 'Sign in to resume this conversation' },
+        children: [],
+      },
+      text: {
+        type: 'Text',
+        props: {
+          text: 'This conversation belongs to your account. Sign in to pick up right where you left off.',
+        },
+        children: [],
+      },
+      google: {
+        type: 'Button',
+        props: { label: 'Continue with Google', variant: 'primary' },
+        on: { press: { action: 'signInWith', params: { provider: 'google', callbackUrl } } },
+        children: [],
+      },
+      github: {
+        type: 'Button',
+        props: { label: 'Continue with GitHub', variant: 'secondary' },
+        on: { press: { action: 'signInWith', params: { provider: 'github', callbackUrl } } },
+        children: [],
+      },
+    },
+  };
+}
+
+/**
  * Emit the two AI SDK v6 stream chunks that reconstruct a `tool-renderUI` part
  * with `state: 'output-available'` on the client. This bypasses the model
  * entirely — used when preflight rejects an anonymous request with
