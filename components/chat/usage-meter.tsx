@@ -20,7 +20,7 @@ export function UsageMeter() {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label="Daily usage limit"
-            className={cn('h-full transition-all', warn ? 'bg-destructive' : 'bg-foreground/60')}
+            className={cn('h-full transition-all', warn ? 'bg-destructive' : 'bg-primary')}
             style={{ width: `${pctUsed}%` }}
           />
         </div>
