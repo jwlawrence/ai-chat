@@ -89,11 +89,11 @@ Reuses the existing 6-cell bento skeleton (one 2×2 hero, four 1×1 tiles, one
 
 - **Outer Card** title: `Under the hood.`
 - **Hero** (GridCell colSpan=2 rowSpan=2): inner Card titled `System-prompt budget.`
-  - `Heading` level=1 = the catalog token count, e.g. `~5.4K tok` **[verify]**
+  - `Heading` level=1 = the catalog token count, `~5.4K tokens` (confirmed ~5,438, under the 6,000-token cap; kept rounded so it survives catalog drift)
   - `Chart` kind=`pie`, `legend=false`, data = catalog vs the rest of the system
-    prompt, e.g. `[{"label":"Cached catalog","value":78},{"label":"Steering & tools","value":22}]` **[illustrative]** — the dominant slice is the cached catalog.
-- **Tile s1** (1×1): `KPI` value=`15` label=`json-render primitives` **[verify]**
-- **Tile s2** (1×1): `KPI` value=`4` label=`Models you can switch between` **[verify]**
+    prompt, e.g. `[{"label":"Cached catalog","value":78},{"label":"Steering and tools","value":22}]` **[illustrative]** — the dominant slice is the cached catalog.
+- **Tile s1** (1×1): `KPI` value=`23` label=`Renderable UI primitives in the catalog` (confirmed: 23 component types)
+- **Tile s2** (1×1): `KPI` value=`4` label=`Models you can switch between` (confirmed: gpt-5.4, gpt-5.4-mini, gpt-5.3-codex, o4-mini)
 - **Tile s3** (1×1): titleless Card with two stacked mini-stats:
   - `Heading` level=3 `1024 tok` / `Text` muted `Azure auto-cache threshold`
   - `Heading` level=3 `position 0` / `Text` muted `Where the catalog is pinned`
@@ -109,7 +109,7 @@ outer Card; embedded `Spec shape` JSON).
 2×2 grid; each GridCell holds an inner Card (title + `Heading` level=2 +
 `Text` body). Four real capabilities:
 
-1. **Generative UI** — Heading `renderUI tool, ~15 primitives` **[verify]** — Body:
+1. **Generative UI** — Heading `renderUI tool, 23 primitives` — Body:
    `The model returns a JSON spec, not prose. The json-render engine paints it into Cards, Grids, Charts, Forms, and more, then wires the result up to be interactive on the client.`
 2. **Prompt caching** — Heading `Catalog pinned at position 0` — Body:
    `The component catalog (~5.4K tokens) sits at the very start of the system prompt, so Azure's automatic cache reuses it across turns and repeat turns get cheaper.`
@@ -193,9 +193,14 @@ keeps working. We drop the recruiting-specific framing and fields.
 | `lib/chat/chips.ts` | Update narrative-arc comment (cosmetic) |
 | `lib/contact/web3forms.ts` | New field model: type, parse, validate, required-fields, email send |
 | `lib/contact/auto-reply.ts` | New summary copy from `topic`/`message` |
-| `lib/contact/web3forms.test.ts` | Update for new fields |
-| `lib/contact/auto-reply.test.ts` | Update for new copy/fields |
-| `lib/json-render/registry.test.tsx` | Review `roleType`/`contact` example usages (likely fine as generic Select tests; change only if they assert the old contact field set) |
+| `components/chat/conversation.tsx` | **No change** — already iterates `CONTACT_REQUIRED_FIELDS` and calls the validators generically; adapts to the new field set automatically. Verified. |
+| `lib/contact/web3forms.test.ts` | Rewrite fixtures + parse/validate/email assertions for `{name,email,topic,message}` |
+| `lib/contact/auto-reply.test.ts` | Rewrite summary-copy assertions for the new `topic`/`message` openers |
+| `app/api/chat/route.contact.test.ts` | Update the `contactSubmitRequest` fixture + the auto-reply body assertions ("Got it: you're hiring for…" → new copy); the "omits the question summary" case becomes a topic/message case |
+| `app/api/chat/route.logout-session.test.ts` | Update contact-submit fixtures (lines ~143, ~194) to the new field shape |
+| `components/chat/conversation.test.ts` | Update fixtures + the `/_errors/contact/roleType` assertion → `/_errors/contact/topic` (or `/message`) |
+| `components/chat/conversation.dispatcher.test.ts` | Update the contact fixture (line ~208) to the new field shape |
+| `lib/json-render/registry.test.tsx` | **Leave as-is** — uses `roleType` only as a generic Select field name in self-contained binding/error tests; not coupled to the contact schema |
 
 ## Integration risks & testing
 
