@@ -10,8 +10,8 @@ import type { PressData } from './conversation';
 import {
   buildSubmitFormHandler,
   messageHasPressChip,
-  messageHasRenderUI,
   messageHasRenderableContent,
+  messageHasRenderUI,
   messageHasVisibleOutput,
 } from './conversation';
 
@@ -41,10 +41,9 @@ describe('R — submitForm: calls web3forms with accessKey + parsed fields', () 
     const store = createStateStore({
       contact: {
         name: 'Alice Smith',
-        company: 'BigCorp',
-        roleType: 'Engineering Manager',
         email: 'alice@bigcorp.com',
-        question: 'Can you ship fast?',
+        topic: 'Say hello',
+        message: 'Can you ship fast?',
       },
     });
     const lockedRef = { current: false };
@@ -66,10 +65,9 @@ describe('R — submitForm: calls web3forms with accessKey + parsed fields', () 
     expect(opts).toHaveProperty('accessKey');
     expect(submission).toMatchObject({
       name: 'Alice Smith',
-      company: 'BigCorp',
-      roleType: 'Engineering Manager',
       email: 'alice@bigcorp.com',
-      question: 'Can you ship fast?',
+      topic: 'Say hello',
+      message: 'Can you ship fast?',
     });
   });
 
@@ -110,8 +108,8 @@ describe('R2 — submitForm: client-side contact validation', () => {
     const store = createStateStore({
       contact: {
         name: 'Alice Smith',
-        company: 'BigCorp',
-        roleType: 'Engineering Manager',
+        topic: 'Say hello',
+        message: 'hi',
         // email intentionally absent
       },
     });
@@ -144,11 +142,11 @@ describe('R2 — submitForm: client-side contact validation', () => {
     const store = createStateStore({
       contact: {
         name: 'Alice Smith',
-        company: 'BigCorp',
-        roleType: 'Engineering Manager',
         email: 'alice@bigcorp.com',
+        topic: 'Say hello',
+        message: 'hi',
       },
-      '_errors': {
+      _errors: {
         contact: { email: 'Enter your email' },
       },
     });
@@ -169,8 +167,8 @@ describe('R2 — submitForm: client-side contact validation', () => {
     // All error paths must be cleared (undefined) after valid submit.
     expect(store.get('/_errors/contact/email')).toBeUndefined();
     expect(store.get('/_errors/contact/name')).toBeUndefined();
-    expect(store.get('/_errors/contact/company')).toBeUndefined();
-    expect(store.get('/_errors/contact/roleType')).toBeUndefined();
+    expect(store.get('/_errors/contact/topic')).toBeUndefined();
+    expect(store.get('/_errors/contact/message')).toBeUndefined();
   });
 });
 

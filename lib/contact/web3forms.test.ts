@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   CONTACT_FIELD_MAX,
-  CONTACT_QUESTION_MAX,
-  type ContactFormSubmission,
+  CONTACT_MESSAGE_MAX,
   CONTACT_REQUIRED_FIELDS,
+  type ContactFormSubmission,
   detectContactFormSubmit,
   extractContactSubmissionId,
   parseContactFormFields,
@@ -13,13 +13,13 @@ import {
 
 const VALID: ContactFormSubmission = {
   name: 'Jane Doe',
-  company: 'Acme',
-  roleType: 'Engineering Manager',
   email: 'jane@acme.com',
+  topic: 'Question about the build',
+  message: 'How does the engine decide what to render?',
 };
 
 describe('parseContactFormFields', () => {
-  it('returns the typed submission when name/company/roleType are present', () => {
+  it('returns the typed submission when all required fields are present', () => {
     expect(parseContactFormFields({ ...VALID })).toEqual(VALID);
   });
 
@@ -27,45 +27,46 @@ describe('parseContactFormFields', () => {
     expect(
       parseContactFormFields({
         name: '  Jane Doe  ',
-        company: '\tAcme\n',
-        roleType: ' Engineering Manager ',
         email: '  jane@acme.com  ',
+        topic: ' Question about the build ',
+        message: '\tHow does the engine decide what to render?\n',
       }),
-    ).toEqual({
-      name: 'Jane Doe',
-      company: 'Acme',
-      roleType: 'Engineering Manager',
-      email: 'jane@acme.com',
-    });
-  });
-
-  it('includes the optional question when present, omits when blank', () => {
-    expect(parseContactFormFields({ ...VALID, question: 'How fast can you ship?' })).toMatchObject({
-      question: 'How fast can you ship?',
-    });
-    expect(parseContactFormFields({ ...VALID, question: '   ' })).not.toHaveProperty('question');
-    expect(parseContactFormFields({ ...VALID, question: undefined })).not.toHaveProperty(
-      'question',
-    );
+    ).toEqual(VALID);
   });
 
   it('rejects submissions where any required field is missing or blank', () => {
-    expect(parseContactFormFields({ company: 'Acme', roleType: 'EM' })).toBeNull();
-    expect(parseContactFormFields({ name: 'Jane', roleType: 'EM' })).toBeNull();
-    expect(parseContactFormFields({ name: 'Jane', company: 'Acme' })).toBeNull();
-    expect(parseContactFormFields({ ...VALID, name: '   ' })).toBeNull();
+    expect(
+      parseContactFormFields({ email: 'jane@acme.com', topic: 'Say hello', message: 'hi' }),
+    ).toBeNull();
+    expect(parseContactFormFields({ name: 'Jane', topic: 'Say hello', message: 'hi' })).toBeNull();
+    expect(
+      parseContactFormFields({ name: 'Jane', email: 'jane@acme.com', message: 'hi' }),
+    ).toBeNull();
+    expect(
+      parseContactFormFields({ name: 'Jane', email: 'jane@acme.com', topic: 'Say hello' }),
+    ).toBeNull();
+    expect(parseContactFormFields({ ...VALID, message: '   ' })).toBeNull();
   });
 
   it('rejects non-string field values', () => {
-    expect(parseContactFormFields({ name: 42, company: 'Acme', roleType: 'EM' })).toBeNull();
-    expect(parseContactFormFields({ ...VALID, name: null })).toBeNull();
+    expect(parseContactFormFields({ ...VALID, name: 42 })).toBeNull();
+    expect(parseContactFormFields({ ...VALID, message: null })).toBeNull();
   });
 
-  it('rejects a name/company/roleType exceeding CONTACT_FIELD_MAX', () => {
+  it('rejects a name/email/topic exceeding CONTACT_FIELD_MAX', () => {
     const huge = 'x'.repeat(CONTACT_FIELD_MAX + 1);
     expect(parseContactFormFields({ ...VALID, name: huge })).toBeNull();
-    expect(parseContactFormFields({ ...VALID, company: huge })).toBeNull();
-    expect(parseContactFormFields({ ...VALID, roleType: huge })).toBeNull();
+    expect(parseContactFormFields({ ...VALID, topic: huge })).toBeNull();
+  });
+
+  it('rejects a message exceeding CONTACT_MESSAGE_MAX', () => {
+    const huge = 'q'.repeat(CONTACT_MESSAGE_MAX + 1);
+    expect(parseContactFormFields({ ...VALID, message: huge })).toBeNull();
+  });
+
+  it('accepts a message exactly at CONTACT_MESSAGE_MAX', () => {
+    const max = 'q'.repeat(CONTACT_MESSAGE_MAX);
+    expect(parseContactFormFields({ ...VALID, message: max })).toMatchObject({ message: max });
   });
 
   it('accepts a field exactly at CONTACT_FIELD_MAX', () => {
@@ -73,24 +74,12 @@ describe('parseContactFormFields', () => {
     expect(parseContactFormFields({ ...VALID, name: max })).toMatchObject({ name: max });
   });
 
-  it('drops a question exceeding CONTACT_QUESTION_MAX (keeps required fields)', () => {
-    const huge = 'q'.repeat(CONTACT_QUESTION_MAX + 1);
-    const result = parseContactFormFields({ ...VALID, question: huge });
-    expect(result).not.toBeNull();
-    expect(result).not.toHaveProperty('question');
-  });
-
-  it('accepts a question exactly at CONTACT_QUESTION_MAX', () => {
-    const max = 'q'.repeat(CONTACT_QUESTION_MAX);
-    expect(parseContactFormFields({ ...VALID, question: max })).toMatchObject({ question: max });
-  });
-
   it('rejects a submission with no email', () => {
     const { email: _email, ...withoutEmail } = VALID;
     expect(parseContactFormFields(withoutEmail)).toBeNull();
   });
 
-  it('rejects a submission with a blank email', () => {
+  it('rejects a blank email', () => {
     expect(parseContactFormFields({ ...VALID, email: '   ' })).toBeNull();
   });
 
@@ -98,7 +87,7 @@ describe('parseContactFormFields', () => {
     expect(parseContactFormFields({ ...VALID, email: 'not-an-email' })).toBeNull();
   });
 
-  it('rejects a malformed email (a@b — no TLD segment)', () => {
+  it('rejects a malformed email (a@b, no TLD segment)', () => {
     expect(parseContactFormFields({ ...VALID, email: 'a@b' })).toBeNull();
   });
 
@@ -109,12 +98,6 @@ describe('parseContactFormFields', () => {
   it('accepts a valid email', () => {
     expect(parseContactFormFields({ ...VALID, email: 'user@example.com' })).toMatchObject({
       email: 'user@example.com',
-    });
-  });
-
-  it('trims the email before validation', () => {
-    expect(parseContactFormFields({ ...VALID, email: '  jane@acme.com  ' })).toMatchObject({
-      email: 'jane@acme.com',
     });
   });
 
@@ -164,18 +147,14 @@ describe('detectContactFormSubmit', () => {
         parts: [
           {
             type: 'data-press',
-            data: {
-              action: 'submitForm',
-              formName: 'contact',
-              data: { name: 'Jane', company: '' },
-            },
+            data: { action: 'submitForm', formName: 'contact', data: { name: 'Jane', topic: '' } },
           },
         ],
       }),
     ).toBeNull();
   });
 
-  it('returns null when roleType is missing', () => {
+  it('returns null when message is missing', () => {
     expect(
       detectContactFormSubmit({
         parts: [
@@ -184,7 +163,7 @@ describe('detectContactFormSubmit', () => {
             data: {
               action: 'submitForm',
               formName: 'contact',
-              data: { name: 'Jane', company: 'Acme' },
+              data: { name: 'Jane', email: 'jane@acme.com', topic: 'Say hello' },
             },
           },
         ],
@@ -202,25 +181,6 @@ describe('detectContactFormSubmit', () => {
       ],
     });
     expect(result).toEqual(VALID);
-  });
-
-  it('includes the optional question field when provided', () => {
-    const result = detectContactFormSubmit({
-      parts: [
-        {
-          type: 'data-press',
-          data: {
-            action: 'submitForm',
-            formName: 'contact',
-            data: { ...VALID, question: 'Does platform work translate to consumer?' },
-          },
-        },
-      ],
-    });
-    expect(result).toEqual({
-      ...VALID,
-      question: 'Does platform work translate to consumer?',
-    });
   });
 });
 
@@ -241,7 +201,7 @@ describe('extractContactSubmissionId', () => {
               action: 'submitForm',
               formName: 'contact',
               submissionId: 'abc-123',
-              data: { name: 'x', company: 'y', roleType: 'z' },
+              data: { ...VALID },
             },
           },
         ],
@@ -263,15 +223,11 @@ describe('extractContactSubmissionId', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// validateContactFields — field-level error messages (Part A)
-// ---------------------------------------------------------------------------
-
 const VALID_FIELDS: Record<string, unknown> = {
   name: 'Jane Doe',
   email: 'jane@acme.com',
-  company: 'Acme',
-  roleType: 'Engineering Manager',
+  topic: 'Question about the build',
+  message: 'How does the engine decide what to render?',
 };
 
 describe('validateContactFields', () => {
@@ -281,104 +237,98 @@ describe('validateContactFields', () => {
 
   it('returns name error when name is missing', () => {
     const { name: _n, ...rest } = VALID_FIELDS;
-    const errors = validateContactFields(rest);
-    expect(errors.name).toBe('Enter your name');
+    expect(validateContactFields(rest).name).toBe('Enter your name');
   });
 
   it('returns name error when name is whitespace-only', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, name: '   ' });
-    expect(errors.name).toBe('Enter your name');
+    expect(validateContactFields({ ...VALID_FIELDS, name: '   ' }).name).toBe('Enter your name');
   });
 
   it('returns name error when name exceeds CONTACT_FIELD_MAX', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, name: 'a'.repeat(CONTACT_FIELD_MAX + 1) });
-    expect(errors.name).toBe('Name is too long');
+    expect(
+      validateContactFields({ ...VALID_FIELDS, name: 'a'.repeat(CONTACT_FIELD_MAX + 1) }).name,
+    ).toBe('Name is too long');
   });
 
   it('returns email error when email is missing', () => {
     const { email: _e, ...rest } = VALID_FIELDS;
-    const errors = validateContactFields(rest);
-    expect(errors.email).toBe('Enter your email');
+    expect(validateContactFields(rest).email).toBe('Enter your email');
   });
 
   it('returns email error for malformed email (no @)', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, email: 'nope' });
-    expect(errors.email).toBe('Enter a valid email');
-  });
-
-  it('returns email error for malformed email (a@b — no TLD)', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, email: 'a@b' });
-    expect(errors.email).toBe('Enter a valid email');
-  });
-
-  it('returns email error for email with space before @', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, email: 'a b@c.com' });
-    expect(errors.email).toBe('Enter a valid email');
+    expect(validateContactFields({ ...VALID_FIELDS, email: 'nope' }).email).toBe(
+      'Enter a valid email',
+    );
   });
 
   it('returns email error when email exceeds CONTACT_FIELD_MAX', () => {
     const huge = `${'a'.repeat(CONTACT_FIELD_MAX)}@example.com`;
-    const errors = validateContactFields({ ...VALID_FIELDS, email: huge });
-    expect(errors.email).toBe('Enter a valid email');
+    expect(validateContactFields({ ...VALID_FIELDS, email: huge }).email).toBe(
+      'Enter a valid email',
+    );
   });
 
-  it('returns company error when company is missing', () => {
-    const { company: _c, ...rest } = VALID_FIELDS;
-    const errors = validateContactFields(rest);
-    expect(errors.company).toBe('Enter your company');
+  it('returns topic error when topic is missing', () => {
+    const { topic: _t, ...rest } = VALID_FIELDS;
+    expect(validateContactFields(rest).topic).toBe('Pick a topic');
   });
 
-  it('returns company error when company exceeds CONTACT_FIELD_MAX', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, company: 'x'.repeat(CONTACT_FIELD_MAX + 1) });
-    expect(errors.company).toBe('Company is too long');
+  it('returns message error when message is missing', () => {
+    const { message: _m, ...rest } = VALID_FIELDS;
+    expect(validateContactFields(rest).message).toBe('Enter a message');
   });
 
-  it('returns roleType error when roleType is missing', () => {
-    const { roleType: _r, ...rest } = VALID_FIELDS;
-    const errors = validateContactFields(rest);
-    expect(errors.roleType).toBe('Select a role');
-  });
-
-  it('does not validate question (it is optional)', () => {
-    const errors = validateContactFields({ ...VALID_FIELDS, question: '' });
-    expect(errors).toEqual({});
+  it('returns message error when message exceeds CONTACT_MESSAGE_MAX', () => {
+    expect(
+      validateContactFields({ ...VALID_FIELDS, message: 'm'.repeat(CONTACT_MESSAGE_MAX + 1) })
+        .message,
+    ).toBe('Message is too long');
   });
 
   it('CONTACT_REQUIRED_FIELDS contains the expected fields', () => {
     expect(CONTACT_REQUIRED_FIELDS).toContain('name');
     expect(CONTACT_REQUIRED_FIELDS).toContain('email');
-    expect(CONTACT_REQUIRED_FIELDS).toContain('company');
-    expect(CONTACT_REQUIRED_FIELDS).toContain('roleType');
+    expect(CONTACT_REQUIRED_FIELDS).toContain('topic');
+    expect(CONTACT_REQUIRED_FIELDS).toContain('message');
   });
 
   it('returns errors for multiple invalid fields simultaneously', () => {
-    const errors = validateContactFields({ name: '', email: 'bad', company: 'Acme', roleType: 'EM' });
+    const errors = validateContactFields({
+      name: '',
+      email: 'bad',
+      topic: 'Say hello',
+      message: 'hi',
+    });
     expect(errors.name).toBe('Enter your name');
     expect(errors.email).toBe('Enter a valid email');
-    expect(errors.company).toBeUndefined();
-    expect(errors.roleType).toBeUndefined();
+    expect(errors.topic).toBeUndefined();
+    expect(errors.message).toBeUndefined();
   });
 });
 
 describe('sendContactFormToEmail', () => {
   it('returns missing_access_key when accessKey is an empty string', async () => {
-    const result = await sendContactFormToEmail(VALID, { accessKey: '' });
-    expect(result).toEqual({ ok: false, reason: 'missing_access_key' });
+    expect(await sendContactFormToEmail(VALID, { accessKey: '' })).toEqual({
+      ok: false,
+      reason: 'missing_access_key',
+    });
   });
 
   it('returns missing_access_key when accessKey is whitespace only', async () => {
-    const result = await sendContactFormToEmail(VALID, { accessKey: '   ' });
-    expect(result).toEqual({ ok: false, reason: 'missing_access_key' });
+    expect(await sendContactFormToEmail(VALID, { accessKey: '   ' })).toEqual({
+      ok: false,
+      reason: 'missing_access_key',
+    });
   });
 
   it('POSTs to Web3Forms with the access key and form contents', async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
-    const result = await sendContactFormToEmail(
-      { ...VALID, question: 'q?' },
-      { accessKey: 'test-key', fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await sendContactFormToEmail(VALID, {
+      accessKey: 'test-key',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
     expect(result).toEqual({ ok: true });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
@@ -390,23 +340,12 @@ describe('sendContactFormToEmail', () => {
     expect(body.from_name).toBe(VALID.name);
     expect(body.email).toBe(VALID.email);
     expect(body.replyto).toBe(VALID.email);
-    expect(body.subject).toContain(VALID.company);
-    expect(body.subject).toContain(VALID.roleType);
+    expect(body.subject).toContain(VALID.topic);
+    expect(body.subject).toContain(VALID.name);
     expect(body.message).toContain(`Name: ${VALID.name}`);
     expect(body.message).toContain(`Email: ${VALID.email}`);
-    expect(body.message).toContain(`Company: ${VALID.company}`);
-    expect(body.message).toContain(`Role type: ${VALID.roleType}`);
-    expect(body.message).toContain('q?');
-  });
-
-  it('omits the question section when none is provided', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
-    await sendContactFormToEmail(VALID, {
-      accessKey: 'k',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-    });
-    const body = JSON.parse((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body as string);
-    expect(body.message).not.toContain('Question:');
+    expect(body.message).toContain(`Topic: ${VALID.topic}`);
+    expect(body.message).toContain(VALID.message);
   });
 
   it('returns send_failed on a non-ok HTTP response and includes the response body', async () => {

@@ -204,9 +204,9 @@ describe('buildSubmitFormHandler — I8: submitForm', () => {
   // validation gate introduced in Part B. Using a complete valid fixture.
   const validContactData = {
     name: 'Alice Smith',
-    company: 'BigCorp',
-    roleType: 'Engineering Manager',
     email: 'alice@bigcorp.com',
+    topic: 'Say hello',
+    message: 'hi',
   };
 
   it('calls sendMessage with correct parts and locks the card', async () => {

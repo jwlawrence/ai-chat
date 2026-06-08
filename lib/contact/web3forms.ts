@@ -22,9 +22,8 @@
 export type ContactFormSubmission = {
   name: string;
   email: string;
-  company: string;
-  roleType: string;
-  question?: string;
+  topic: string;
+  message: string;
 };
 
 /**
@@ -41,7 +40,7 @@ export type ContactFormSubmission = {
  * model path (which the chip gate will reject for anonymous users anyway).
  */
 export const CONTACT_FIELD_MAX = 200;
-export const CONTACT_QUESTION_MAX = 2000;
+export const CONTACT_MESSAGE_MAX = 2000;
 
 export type Web3FormsResult =
   | { ok: true }
@@ -66,16 +65,15 @@ export async function sendContactFormToEmail(
   if (!accessKey?.trim()) return { ok: false, reason: 'missing_access_key' };
 
   const fetcher = options.fetchImpl ?? fetch;
-  const subject = `Portfolio contact from ${submission.company} (${submission.roleType})`;
+  const subject = `Portfolio contact: ${submission.topic} (from ${submission.name})`;
   const messageLines = [
     `Name: ${submission.name}`,
     `Email: ${submission.email}`,
-    `Company: ${submission.company}`,
-    `Role type: ${submission.roleType}`,
+    `Topic: ${submission.topic}`,
+    '',
+    'Message:',
+    submission.message,
   ];
-  if (submission.question) {
-    messageLines.push('', 'Question:', submission.question);
-  }
 
   try {
     const res = await fetcher(ENDPOINT, {
@@ -129,17 +127,10 @@ export async function sendContactFormToEmail(
 export function parseContactFormFields(raw: Record<string, unknown>): ContactFormSubmission | null {
   const name = boundedStrOrNull(raw.name, CONTACT_FIELD_MAX);
   const email = boundedEmailOrNull(raw.email, CONTACT_FIELD_MAX);
-  const company = boundedStrOrNull(raw.company, CONTACT_FIELD_MAX);
-  const roleType = boundedStrOrNull(raw.roleType, CONTACT_FIELD_MAX);
-  if (!name || !email || !company || !roleType) return null;
-  const question = boundedStrOrNull(raw.question, CONTACT_QUESTION_MAX);
-  return {
-    name,
-    email,
-    company,
-    roleType,
-    ...(question ? { question } : {}),
-  };
+  const topic = boundedStrOrNull(raw.topic, CONTACT_FIELD_MAX);
+  const message = boundedStrOrNull(raw.message, CONTACT_MESSAGE_MAX);
+  if (!name || !email || !topic || !message) return null;
+  return { name, email, topic, message };
 }
 
 /**
@@ -241,7 +232,7 @@ function boundedEmailOrNull(v: unknown, maxLength: number): string | null {
 // Client-side field validation (single source of truth alongside parseContactFormFields)
 // ---------------------------------------------------------------------------
 
-export const CONTACT_REQUIRED_FIELDS = ['name', 'email', 'company', 'roleType'] as const;
+export const CONTACT_REQUIRED_FIELDS = ['name', 'email', 'topic', 'message'] as const;
 export type ContactErrorField = (typeof CONTACT_REQUIRED_FIELDS)[number];
 
 /**
@@ -270,18 +261,20 @@ export function validateContactFields(
     errors.email = 'Enter a valid email';
   }
 
-  // company
-  const companyRaw = typeof raw.company === 'string' ? raw.company.trim() : '';
-  if (companyRaw.length === 0) {
-    errors.company = 'Enter your company';
-  } else if (companyRaw.length > CONTACT_FIELD_MAX) {
-    errors.company = 'Company is too long';
+  // topic
+  const topicRaw = typeof raw.topic === 'string' ? raw.topic.trim() : '';
+  if (topicRaw.length === 0) {
+    errors.topic = 'Pick a topic';
+  } else if (topicRaw.length > CONTACT_FIELD_MAX) {
+    errors.topic = 'Topic is too long';
   }
 
-  // roleType
-  const roleTypeRaw = typeof raw.roleType === 'string' ? raw.roleType.trim() : '';
-  if (roleTypeRaw.length === 0) {
-    errors.roleType = 'Select a role';
+  // message
+  const messageRaw = typeof raw.message === 'string' ? raw.message.trim() : '';
+  if (messageRaw.length === 0) {
+    errors.message = 'Enter a message';
+  } else if (messageRaw.length > CONTACT_MESSAGE_MAX) {
+    errors.message = 'Message is too long';
   }
 
   return errors;

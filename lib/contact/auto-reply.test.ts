@@ -4,9 +4,9 @@ import type { ContactFormSubmission } from './web3forms';
 
 const BASE: ContactFormSubmission = {
   name: 'Jane Doe',
-  company: 'Acme',
-  roleType: 'Tech Lead Manager',
   email: 'jane@acme.com',
+  topic: 'Question about the build',
+  message: 'How does the engine decide what to render?',
 };
 
 function getTitle(spec: ReturnType<typeof buildAutoReplySpec>): string {
@@ -48,35 +48,42 @@ describe('buildAutoReplySpec', () => {
     expect(getTitle(buildAutoReplySpec({ ...BASE, name: '   ' }))).toBe('Thanks, there.');
   });
 
-  it('summary mentions the role type and company without the question when absent', () => {
-    const spec = buildAutoReplySpec(BASE);
-    expect(getText(spec, 'summary')).toBe("Got it: you're hiring for a Tech Lead Manager at Acme.");
+  it('uses the "Question about the build" opener and echoes the message', () => {
+    expect(getText(buildAutoReplySpec(BASE), 'summary')).toBe(
+      'Happy to talk about the build. You wrote: How does the engine decide what to render.',
+    );
   });
 
-  it('weaves the question into the summary when present', () => {
+  it('uses the "Say hello" opener', () => {
     const spec = buildAutoReplySpec({
       ...BASE,
-      question: 'Does platform work translate to consumer teams?',
+      topic: 'Say hello',
+      message: 'Just wanted to say hi',
     });
     expect(getText(spec, 'summary')).toBe(
-      "Got it: you're hiring for a Tech Lead Manager at Acme, and you want to know: Does platform work translate to consumer teams.",
+      'Great to hear from you. You wrote: Just wanted to say hi.',
     );
   });
 
-  it('uses "an" article before a vowel-initial role type', () => {
-    const spec = buildAutoReplySpec({ ...BASE, roleType: 'Engineering Manager' });
+  it('uses the "Work together" opener', () => {
+    const spec = buildAutoReplySpec({
+      ...BASE,
+      topic: 'Work together',
+      message: 'Lets build something',
+    });
     expect(getText(spec, 'summary')).toBe(
-      "Got it: you're hiring for an Engineering Manager at Acme.",
+      'Glad you want to explore working together. You wrote: Lets build something.',
     );
+  });
+
+  it('falls back to a generic opener for the "Other" topic', () => {
+    const spec = buildAutoReplySpec({ ...BASE, topic: 'Other', message: 'Misc note' });
+    expect(getText(spec, 'summary')).toBe('Got your note. You wrote: Misc note.');
   });
 
   it('always emits the same commitment line', () => {
-    const spec = buildAutoReplySpec(BASE);
-    expect(getText(spec, 'commitment')).toBe('Josh will follow up within one business day.');
-  });
-
-  it('treats blank question as if absent', () => {
-    const spec = buildAutoReplySpec({ ...BASE, question: '   ' });
-    expect(getText(spec, 'summary')).not.toContain('and you want to know');
+    expect(getText(buildAutoReplySpec(BASE), 'commitment')).toBe(
+      'Josh will follow up within one business day.',
+    );
   });
 });

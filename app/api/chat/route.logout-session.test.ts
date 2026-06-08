@@ -139,9 +139,9 @@ describe('chat route — logout-then-continue-session (contact path)', () => {
                   submissionId: 'sub-logout-test-1',
                   data: {
                     name: 'Jane',
-                    company: 'Acme',
-                    roleType: 'Engineer',
                     email: 'jane@acme.com',
+                    topic: 'Say hello',
+                    message: 'hi',
                   },
                   mode: 'model',
                 },
@@ -190,9 +190,9 @@ describe('chat route — logout-then-continue-session (contact path)', () => {
                   submissionId: 'sub-logout-test-2',
                   data: {
                     name: 'Jane',
-                    company: 'Acme',
-                    roleType: 'Engineer',
                     email: 'jane@acme.com',
+                    topic: 'Say hello',
+                    message: 'hi',
                   },
                   mode: 'model',
                 },

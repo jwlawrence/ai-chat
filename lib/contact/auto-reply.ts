@@ -51,12 +51,17 @@ function firstNameOf(fullName: string): string {
   return first.replace(/(^|[-'])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
 }
 
+const SUMMARY_OPENERS: Record<string, string> = {
+  'Say hello': 'Great to hear from you.',
+  'Question about the build': 'Happy to talk about the build.',
+  'Work together': 'Glad you want to explore working together.',
+};
+
 function buildSummary(submission: ContactFormSubmission): string {
-  const article = /^[aeiou]/i.test(submission.roleType.trim()) ? 'an' : 'a';
-  const base = `Got it: you're hiring for ${article} ${submission.roleType} at ${submission.company}`;
-  const question = submission.question?.trim();
-  if (!question) return `${base}.`;
-  return `${base}, and you want to know: ${stripTrailingPunctuation(question)}.`;
+  const opener = SUMMARY_OPENERS[submission.topic.trim()] ?? 'Got your note.';
+  const message = submission.message.trim();
+  if (!message) return opener;
+  return `${opener} You wrote: ${stripTrailingPunctuation(message)}.`;
 }
 
 function stripTrailingPunctuation(text: string): string {

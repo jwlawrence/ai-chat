@@ -63,10 +63,9 @@ async function contactSubmitRequest(overrides: SubmitOverrides = {}) {
   const trustCookie = overrides.skipTrust ? '' : `pac_trust=${await freshTrustCookie()}`;
   const fields = overrides.fields ?? {
     name: 'Jane Doe',
-    company: 'Acme',
-    roleType: 'Engineering Manager',
     email: 'jane@acme.com',
-    question: 'How fast can you ship?',
+    topic: 'Question about the build',
+    message: 'How fast can you ship?',
   };
   const submissionId = overrides.submissionId ?? `s-${Math.random().toString(36).slice(2)}`;
   const chipTurn = {
@@ -117,7 +116,8 @@ describe('chat route — contact form submission', () => {
     expect(body).toContain('tool-input-available');
     expect(body).toContain('tool-output-available');
     expect(body).toContain('Thanks, Jane.');
-    expect(body).toContain("Got it: you're hiring for an Engineering Manager at Acme");
+    expect(body).toContain('Happy to talk about the build.');
+    expect(body).toContain('You wrote: How fast can you ship');
     expect(body).toContain('Josh will follow up within one business day.');
   });
 
@@ -140,16 +140,21 @@ describe('chat route — contact form submission', () => {
     expect(renderPart?.output.root).toBe('reply');
   });
 
-  it('omits the question summary when the question field is absent', async () => {
+  it('uses the topic-specific opener and echoes the message', async () => {
     const res = await POST(
       await contactSubmitRequest({
-        fields: { name: 'Sam Lee', company: 'Beta', roleType: 'Staff Engineer', email: 'sam@beta.com' },
+        fields: {
+          name: 'Sam Lee',
+          email: 'sam@beta.com',
+          topic: 'Say hello',
+          message: 'Big fan of the engine',
+        },
       }),
     );
     const body = await res.text();
     expect(body).toContain('Thanks, Sam.');
-    expect(body).toContain("Got it: you're hiring for a Staff Engineer at Beta.");
-    expect(body).not.toContain('and you want to know');
+    expect(body).toContain('Great to hear from you.');
+    expect(body).toContain('You wrote: Big fan of the engine');
   });
 
   it('bypasses the chip gate (no metadata.chipId on the submit message)', async () => {
@@ -210,7 +215,7 @@ describe('chat route — contact form submission', () => {
                 data: {
                   action: 'submitForm',
                   formName: 'contact',
-                  data: { name: 'X', company: 'Y', roleType: 'Z', email: 'x@y.com' },
+                  data: { name: 'X', email: 'x@y.com', topic: 'Other', message: 'hello' },
                 },
               },
               { type: 'text', text: 'submit' },
@@ -242,7 +247,12 @@ describe('chat route — contact form submission', () => {
                 data: {
                   action: 'submitForm',
                   formName: 'contact',
-                  data: { name: 'Pat', company: 'Co', roleType: 'TLM', email: 'pat@co.com' },
+                  data: {
+                    name: 'Pat',
+                    email: 'pat@co.com',
+                    topic: 'Work together',
+                    message: 'lets talk',
+                  },
                 },
               },
               { type: 'text', text: 'submit' },
