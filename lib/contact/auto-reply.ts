@@ -8,7 +8,7 @@ import type { ContactFormSubmission } from './web3forms';
  *   - The acknowledgement is fully derivable from the submission payload.
  *   - Sending it through the model burns tokens and adds latency for what
  *     should be an instant confirmation.
- *   - The model's variability is undesirable here; recruiters should always
+ *   - The model's variability is undesirable here; every visitor should
  *     see the same calm "got it" tone, and Josh's commitment should never
  *     drift.
  *
@@ -60,6 +60,8 @@ const SUMMARY_OPENERS: Record<string, string> = {
 function buildSummary(submission: ContactFormSubmission): string {
   const opener = SUMMARY_OPENERS[submission.topic.trim()] ?? 'Got your note.';
   const message = submission.message.trim();
+  // Defensive: message is a required, non-blank field (parseContactFormFields
+  // rejects a blank message), so this guard never fires for a valid submission.
   if (!message) return opener;
   return `${opener} You wrote: ${stripTrailingPunctuation(message)}.`;
 }

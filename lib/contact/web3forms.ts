@@ -32,8 +32,8 @@ export type ContactFormSubmission = {
  * the auto-reply spec (we interpolate values into a card title + body), and
  * the Web3Forms POST body from adversarial 10MB inputs.
  *
- * Values were picked to be generous for legitimate visitors (a long company
- * name, a multi-sentence question) while flagging anything that looks like a
+ * Values were picked to be generous for legitimate visitors (a long name,
+ * a multi-paragraph message) while flagging anything that looks like a
  * paste-bomb. Submissions exceeding any cap are rejected as invalid — the
  * client never sees an "input too long" error, the submit just silently
  * fails to match the contact-submit shape and falls through to the normal

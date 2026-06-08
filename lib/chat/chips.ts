@@ -8,7 +8,7 @@ export interface ChipPrompt {
   label: string;
   /**
    * Short text sent as the user message and shown verbatim in the chat
-   * transcript. Kept tight so the recruiter-facing transcript stays clean.
+   * transcript. Kept tight so the chat transcript stays clean.
    * The chat route swaps this for RICH_CHIP_PROMPTS[id] before the model
    * call, so the model always sees the full spec-grade prompt.
    */

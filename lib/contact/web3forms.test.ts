@@ -53,7 +53,7 @@ describe('parseContactFormFields', () => {
     expect(parseContactFormFields({ ...VALID, message: null })).toBeNull();
   });
 
-  it('rejects a name/email/topic exceeding CONTACT_FIELD_MAX', () => {
+  it('rejects a name/topic exceeding CONTACT_FIELD_MAX', () => {
     const huge = 'x'.repeat(CONTACT_FIELD_MAX + 1);
     expect(parseContactFormFields({ ...VALID, name: huge })).toBeNull();
     expect(parseContactFormFields({ ...VALID, topic: huge })).toBeNull();
@@ -261,6 +261,18 @@ describe('validateContactFields', () => {
     );
   });
 
+  it('returns email error for malformed email (a@b, no TLD)', () => {
+    expect(validateContactFields({ ...VALID_FIELDS, email: 'a@b' }).email).toBe(
+      'Enter a valid email',
+    );
+  });
+
+  it('returns email error for an email with a space before @', () => {
+    expect(validateContactFields({ ...VALID_FIELDS, email: 'a b@c.com' }).email).toBe(
+      'Enter a valid email',
+    );
+  });
+
   it('returns email error when email exceeds CONTACT_FIELD_MAX', () => {
     const huge = `${'a'.repeat(CONTACT_FIELD_MAX)}@example.com`;
     expect(validateContactFields({ ...VALID_FIELDS, email: huge }).email).toBe(
@@ -271,6 +283,12 @@ describe('validateContactFields', () => {
   it('returns topic error when topic is missing', () => {
     const { topic: _t, ...rest } = VALID_FIELDS;
     expect(validateContactFields(rest).topic).toBe('Pick a topic');
+  });
+
+  it('returns topic error when topic exceeds CONTACT_FIELD_MAX', () => {
+    expect(
+      validateContactFields({ ...VALID_FIELDS, topic: 'x'.repeat(CONTACT_FIELD_MAX + 1) }).topic,
+    ).toBe('Topic is too long');
   });
 
   it('returns message error when message is missing', () => {

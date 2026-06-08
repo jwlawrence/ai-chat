@@ -443,7 +443,7 @@ export async function POST(req: Request) {
   // with the latest chip-tagged user message swapped from its short transcript
   // text to the rich spec-grade prompt stored server-side in RICH_CHIP_PROMPTS.
   // Persistence still sees the short text via `incoming` / `newUserMessages`,
-  // so the recruiter-facing transcript stays clean.
+  // so the chat transcript stays clean.
   const windowed = applyRichChipPrompts(incoming.slice(-CONTEXT_WINDOW));
 
   // Resolve the model instance before entering the stream so a missing BYOK
