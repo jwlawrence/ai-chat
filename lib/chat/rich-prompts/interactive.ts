@@ -1,36 +1,35 @@
 /**
  * Rich prompt for the "Build a form" chip.
- * Produces the "Tell Josh about the role." contact form (Name / Email /
- * Company / Role type select / optional Question textarea / Send button
- * wired to submitForm with formName="contact"). The chat route detects the
- * resulting submit and emits a deterministic auto-reply card server-side.
+ * Produces the "Get in touch." contact form (Name / Email / Topic select /
+ * Message textarea / Send button wired to submitForm with formName="contact").
+ * The chat route detects the resulting submit and emits a deterministic
+ * auto-reply card server-side. Neutral, app-focused contact form (no hiring
+ * framing).
  */
 export const INTERACTIVE_RICH_PROMPT = [
-  'Use the renderUI tool to emit a single Card titled "Tell Josh about the role."',
+  'Use the renderUI tool to emit a single Card titled "Get in touch."',
   '(keep the trailing period). The Card contains, in order:',
   '',
-  '  1. A muted Text subtitle: "He responds within one business day."',
+  '  1. A muted Text subtitle: "Say hello, ask about the build, or talk shop. Replies within a business day."',
   '',
-  '  2. A Form (name="contact") with five fields and one submit Button,',
+  '  2. A Form (name="contact") with four fields and one submit Button,',
   '     rendered in this exact order:',
-  '       a. Input  name="name"      label="Your name"',
+  '       a. Input  name="name"   label="Your name"',
   '                 placeholder="Jane Doe"          kind="text"',
-  '       b. Input  name="email"     label="Your email"',
-  '                 placeholder="jane@acme.com"     kind="email"',
-  '       c. Input  name="company"   label="Company"',
-  '                 placeholder="Acme Corp"         kind="text"',
-  '       d. Select name="roleType"  label="The role you\'re hiring for" with options:',
-  '            [{"value":"Engineering Manager","label":"Engineering Manager"},',
-  '             {"value":"Tech Lead Manager","label":"Tech Lead Manager"},',
-  '             {"value":"Staff Engineer","label":"Staff Engineer"},',
+  '       b. Input  name="email"  label="Your email"',
+  '                 placeholder="jane@example.com"  kind="email"',
+  '       c. Select name="topic"  label="What\'s this about?" with options:',
+  '            [{"value":"Say hello","label":"Say hello"},',
+  '             {"value":"Question about the build","label":"Question about the build"},',
+  '             {"value":"Work together","label":"Work together"},',
   '             {"value":"Other","label":"Other"}]',
   '          The option values match the labels verbatim so the submitted',
   '          form data carries human-readable text downstream.',
-  '       e. Textarea name="question"',
-  '                  label="One thing you want to know about Josh before scheduling a call"',
-  '                  placeholder="e.g. Does your platform work translate to a consumer-product team?"',
+  '       d. Textarea name="message"',
+  '                  label="Your message"',
+  '                  placeholder="e.g. How does the engine decide what to render?"',
   '                  rows=3',
-  '       f. Button label="Send" variant="primary" with on.press:',
+  '       e. Button label="Send" variant="primary" with on.press:',
   '            { "action": "submitForm", "params": { "formName": "contact" } }',
   '          The `on` block goes at the element level (alongside type/props/children),',
   '          NOT inside props.',
@@ -50,14 +49,13 @@ export const INTERACTIVE_RICH_PROMPT = [
   '{',
   '  "root": "form-card",',
   '  "elements": {',
-  '    "form-card": { "type": "Card", "props": { "title": "Tell Josh about the role." }, "children": ["subtitle", "form"] },',
-  '    "subtitle": { "type": "Text", "props": { "text": "He responds within one business day.", "muted": true }, "children": [] },',
-  '    "form": { "type": "Form", "props": { "name": "contact" }, "children": ["f-name", "f-email", "f-company", "f-roleType", "f-question", "f-send"] },',
+  '    "form-card": { "type": "Card", "props": { "title": "Get in touch." }, "children": ["subtitle", "form"] },',
+  '    "subtitle": { "type": "Text", "props": { "text": "Say hello, ask about the build, or talk shop. Replies within a business day.", "muted": true }, "children": [] },',
+  '    "form": { "type": "Form", "props": { "name": "contact" }, "children": ["f-name", "f-email", "f-topic", "f-message", "f-send"] },',
   '    "f-name": { "type": "Input", "props": { "name": "name", "label": "Your name", "placeholder": "Jane Doe", "kind": "text" }, "children": [] },',
-  '    "f-email": { "type": "Input", "props": { "name": "email", "label": "Your email", "placeholder": "jane@acme.com", "kind": "email" }, "children": [] },',
-  '    "f-company": { "type": "Input", "props": { "name": "company", "label": "Company", "placeholder": "Acme Corp", "kind": "text" }, "children": [] },',
-  '    "f-roleType": { "type": "Select", "props": { "name": "roleType", "label": "The role you\'re hiring for", "options": [{"value":"Engineering Manager","label":"Engineering Manager"},{"value":"Tech Lead Manager","label":"Tech Lead Manager"},{"value":"Staff Engineer","label":"Staff Engineer"},{"value":"Other","label":"Other"}] }, "children": [] },',
-  '    "f-question": { "type": "Textarea", "props": { "name": "question", "label": "One thing you want to know about Josh before scheduling a call", "placeholder": "e.g. Does your platform work translate to a consumer-product team?", "rows": 3 }, "children": [] },',
+  '    "f-email": { "type": "Input", "props": { "name": "email", "label": "Your email", "placeholder": "jane@example.com", "kind": "email" }, "children": [] },',
+  '    "f-topic": { "type": "Select", "props": { "name": "topic", "label": "What\'s this about?", "options": [{"value":"Say hello","label":"Say hello"},{"value":"Question about the build","label":"Question about the build"},{"value":"Work together","label":"Work together"},{"value":"Other","label":"Other"}] }, "children": [] },',
+  '    "f-message": { "type": "Textarea", "props": { "name": "message", "label": "Your message", "placeholder": "e.g. How does the engine decide what to render?", "rows": 3 }, "children": [] },',
   '    "f-send": { "type": "Button", "props": { "label": "Send", "variant": "primary" }, "on": { "press": { "action": "submitForm", "params": { "formName": "contact" } } }, "children": [] }',
   '  }',
   '}',
