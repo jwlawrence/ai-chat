@@ -6,7 +6,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
@@ -93,16 +92,18 @@ function ChartBody(props: ChartProps) {
 
   if (kind === 'pie') {
     const first = series[0];
+    // A pie has a single series, so sectors are colored per data ROW (a
+    // parts-of-a-whole split), not per series. Bake a distinct `fill` onto each
+    // row from the theme palette so every slice reads differently; honor an
+    // explicit per-row `color` when one is supplied. (Passing <Cell> children
+    // was not reliably applied by recharts here, leaving every slice one color.)
+    const pieData = data.map((row, i) => ({
+      ...row,
+      fill: typeof row.color === 'string' ? row.color : FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+    }));
     return (
       <PieChart>
-        <Pie data={data} dataKey={first.key} nameKey={xKey} label>
-          {data.map((row, i) => (
-            <Cell
-              key={`${String(row[xKey] ?? i)}-${i}`}
-              fill={first.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
-            />
-          ))}
-        </Pie>
+        <Pie data={pieData} dataKey={first.key} nameKey={xKey} label />
         <Tooltip content={<ChartTooltipContent />} />
         {legend && <Legend />}
       </PieChart>
