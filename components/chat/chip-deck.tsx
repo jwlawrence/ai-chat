@@ -19,7 +19,7 @@ const CHIP_ICONS: Record<ChipId, typeof LayoutDashboard> = {
 
 const CHIP_BLURBS: Record<ChipId, string> = {
   dashboard: 'How this app is built, at a glance.',
-  composition: 'The four pieces that power the engine.',
+  composition: 'A tour of what it can do.',
   charts: 'Cost per turn, cached vs uncached.',
   interactive: 'Say hello or ask about the build.',
 };
