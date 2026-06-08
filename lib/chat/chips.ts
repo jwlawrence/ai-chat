@@ -15,10 +15,10 @@ export interface ChipPrompt {
   prompt: string;
 }
 
-// Order encodes the narrative arc: scale (dashboard) → proof points
-// (composition) → growth (charts) → call to action (interactive). The chip
-// deck renders in this order. IDs stay stable so isChipId, route metadata,
-// and any downstream chip-keyed maps keep working.
+// Order encodes the narrative arc: how it is built (dashboard) -> what powers
+// it (composition) -> why caching makes it cheap (charts) -> get in touch
+// (interactive). The chip deck renders in this order. IDs stay stable so
+// isChipId, route metadata, and any downstream chip-keyed maps keep working.
 export const CHIP_PROMPTS: ChipPrompt[] = [
   {
     id: 'dashboard',

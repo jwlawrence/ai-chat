@@ -18,10 +18,10 @@ const CHIP_ICONS: Record<ChipId, typeof LayoutDashboard> = {
 };
 
 const CHIP_BLURBS: Record<ChipId, string> = {
-  dashboard: 'EngX platform impact at a glance.',
-  composition: 'Career proof points across four cards.',
-  charts: 'Partner-team contributor growth over time.',
-  interactive: 'Send Josh a note about a role.',
+  dashboard: 'How this app is built, at a glance.',
+  composition: 'The four pieces that power the engine.',
+  charts: 'Cost per turn, cached vs uncached.',
+  interactive: 'Say hello or ask about the build.',
 };
 
 export function ChipDeck({ onSelect, disabled, className }: Props) {
