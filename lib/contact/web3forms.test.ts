@@ -105,6 +105,10 @@ describe('parseContactFormFields', () => {
     const huge = `${'a'.repeat(CONTACT_FIELD_MAX)}@example.com`;
     expect(parseContactFormFields({ ...VALID, email: huge })).toBeNull();
   });
+
+  it('rejects an unknown topic not in the allowlist', () => {
+    expect(parseContactFormFields({ ...VALID, topic: 'Hire me' })).toBeNull();
+  });
 });
 
 describe('detectContactFormSubmit', () => {
@@ -285,10 +289,12 @@ describe('validateContactFields', () => {
     expect(validateContactFields(rest).topic).toBe('Pick a topic');
   });
 
-  it('returns topic error when topic exceeds CONTACT_FIELD_MAX', () => {
-    expect(
-      validateContactFields({ ...VALID_FIELDS, topic: 'x'.repeat(CONTACT_FIELD_MAX + 1) }).topic,
-    ).toBe('Topic is too long');
+  it('returns topic error for an unknown topic', () => {
+    expect(validateContactFields({ ...VALID_FIELDS, topic: 'Hire me' }).topic).toBe('Pick a topic');
+  });
+
+  it('returns topic error when topic is whitespace-only', () => {
+    expect(validateContactFields({ ...VALID_FIELDS, topic: '   ' }).topic).toBe('Pick a topic');
   });
 
   it('returns message error when message is missing', () => {
@@ -301,6 +307,12 @@ describe('validateContactFields', () => {
       validateContactFields({ ...VALID_FIELDS, message: 'm'.repeat(CONTACT_MESSAGE_MAX + 1) })
         .message,
     ).toBe('Message is too long');
+  });
+
+  it('returns message error when message is whitespace-only', () => {
+    expect(validateContactFields({ ...VALID_FIELDS, message: '   ' }).message).toBe(
+      'Enter a message',
+    );
   });
 
   it('CONTACT_REQUIRED_FIELDS contains the expected fields', () => {
@@ -364,6 +376,7 @@ describe('sendContactFormToEmail', () => {
     expect(body.message).toContain(`Email: ${VALID.email}`);
     expect(body.message).toContain(`Topic: ${VALID.topic}`);
     expect(body.message).toContain(VALID.message);
+    expect(body.botcheck).toBe('');
   });
 
   it('returns send_failed on a non-ok HTTP response and includes the response body', async () => {

@@ -32,6 +32,12 @@ vi.mock('@/lib/contact/web3forms', async (importOriginal) => {
   };
 });
 
+// Mock sonner so we can assert on the toast surfaced when the client-side
+// Web3Forms send fails. Only the methods conversation.tsx calls need stubbing.
+vi.mock('sonner', () => ({
+  toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn() },
+}));
+
 describe('R — submitForm: calls web3forms with accessKey + parsed fields', () => {
   it('invokes sendContactFormToEmail with NEXT_PUBLIC key and contact fields', async () => {
     const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
@@ -169,6 +175,46 @@ describe('R2 — submitForm: client-side contact validation', () => {
     expect(store.get('/_errors/contact/name')).toBeUndefined();
     expect(store.get('/_errors/contact/topic')).toBeUndefined();
     expect(store.get('/_errors/contact/message')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R3 — contact submit: surfaces a toast when the client-side send fails
+//
+// The Web3Forms POST is fired fire-and-forget (`void send(...).then(...)`), so
+// the failure toast lands in a detached microtask after the handler resolves.
+// vi.waitFor polls across microtasks until the .then callback runs.
+// ---------------------------------------------------------------------------
+
+describe('R3 — submitForm: toasts on a failed client-side send', () => {
+  it('fires toast.warning("Email delivery failed", …) when send resolves ok=false', async () => {
+    const { sendContactFormToEmail } = await import('@/lib/contact/web3forms');
+    const { toast } = await import('sonner');
+    vi.mocked(sendContactFormToEmail).mockClear();
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(sendContactFormToEmail).mockResolvedValueOnce({ ok: false, reason: 'send_failed' });
+
+    const store = createStateStore({
+      contact: {
+        name: 'Alice Smith',
+        email: 'alice@bigcorp.com',
+        topic: 'Say hello',
+        message: 'Can you ship fast?',
+      },
+    });
+    const handler = buildSubmitFormHandler({
+      store,
+      lockedRef: { current: false },
+      setIsLocked: () => {},
+      sendMessage: vi.fn(async () => {}),
+      specRoot: 'form-card',
+    });
+
+    await handler({ formName: 'contact', label: 'Submit contact' });
+
+    await vi.waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith('Email delivery failed', expect.anything()),
+    );
   });
 });
 

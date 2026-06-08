@@ -86,4 +86,34 @@ describe('buildAutoReplySpec', () => {
       'Josh will follow up within one business day.',
     );
   });
+
+  it("strips trailing '!'", () => {
+    expect(
+      getText(
+        buildAutoReplySpec({ ...BASE, topic: 'Say hello', message: 'This is great!' }),
+        'summary',
+      ),
+    ).toBe('Great to hear from you. You wrote: This is great.');
+  });
+
+  it('strips multiple trailing punctuation', () => {
+    expect(
+      getText(buildAutoReplySpec({ ...BASE, topic: 'Say hello', message: 'Ship it!!' }), 'summary'),
+    ).toBe('Great to hear from you. You wrote: Ship it.');
+  });
+
+  it('returns just the opener when message is all punctuation', () => {
+    expect(
+      getText(buildAutoReplySpec({ ...BASE, topic: 'Say hello', message: '???' }), 'summary'),
+    ).toBe('Great to hear from you.');
+  });
+
+  it('collapses a multi-line message to one line', () => {
+    expect(
+      getText(
+        buildAutoReplySpec({ ...BASE, topic: 'Say hello', message: 'line one\nline two' }),
+        'summary',
+      ),
+    ).toBe('Great to hear from you. You wrote: line one line two.');
+  });
 });

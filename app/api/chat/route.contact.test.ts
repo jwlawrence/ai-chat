@@ -263,7 +263,9 @@ describe('chat route — contact form submission', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain('Thanks, Pat.');
+    const body = await res.text();
+    expect(body).toContain('Thanks, Pat.');
+    expect(body).toContain('Glad you want to explore working together.');
   });
 
   it('replays the same submissionId as ok=true without creating a second session', async () => {

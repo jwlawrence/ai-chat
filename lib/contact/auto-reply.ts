@@ -1,5 +1,5 @@
 import type { Spec } from '@json-render/core';
-import type { ContactFormSubmission } from './web3forms';
+import type { ContactFormSubmission, ContactTopic } from './web3forms';
 
 /**
  * Builds the deterministic auto-reply card emitted server-side immediately
@@ -51,19 +51,21 @@ function firstNameOf(fullName: string): string {
   return first.replace(/(^|[-'])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
 }
 
-const SUMMARY_OPENERS: Record<string, string> = {
+const SUMMARY_OPENERS: Record<ContactTopic, string> = {
   'Say hello': 'Great to hear from you.',
   'Question about the build': 'Happy to talk about the build.',
   'Work together': 'Glad you want to explore working together.',
+  Other: 'Got your note.',
 };
 
 function buildSummary(submission: ContactFormSubmission): string {
-  const opener = SUMMARY_OPENERS[submission.topic.trim()] ?? 'Got your note.';
-  const message = submission.message.trim();
-  // Defensive: message is a required, non-blank field (parseContactFormFields
-  // rejects a blank message), so this guard never fires for a valid submission.
-  if (!message) return opener;
-  return `${opener} You wrote: ${stripTrailingPunctuation(message)}.`;
+  const opener = SUMMARY_OPENERS[submission.topic];
+  const echoed = stripTrailingPunctuation(collapseWhitespace(submission.message));
+  return echoed ? `${opener} You wrote: ${echoed}.` : opener;
+}
+
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function stripTrailingPunctuation(text: string): string {

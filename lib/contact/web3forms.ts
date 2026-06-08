@@ -19,10 +19,18 @@
  * source of truth for "what counts as a valid contact submission".
  */
 
+export const CONTACT_TOPICS = [
+  'Say hello',
+  'Question about the build',
+  'Work together',
+  'Other',
+] as const;
+export type ContactTopic = (typeof CONTACT_TOPICS)[number];
+
 export type ContactFormSubmission = {
   name: string;
   email: string;
-  topic: string;
+  topic: ContactTopic;
   message: string;
 };
 
@@ -130,6 +138,7 @@ export function parseContactFormFields(raw: Record<string, unknown>): ContactFor
   const topic = boundedStrOrNull(raw.topic, CONTACT_FIELD_MAX);
   const message = boundedStrOrNull(raw.message, CONTACT_MESSAGE_MAX);
   if (!name || !email || !topic || !message) return null;
+  if (!isContactTopic(topic)) return null;
   return { name, email, topic, message };
 }
 
@@ -212,6 +221,10 @@ export function extractContactSubmissionId(
 // (no-@, a@b, space@b.com) without rejecting valid edge-case addresses.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function isContactTopic(value: string): value is ContactTopic {
+  return (CONTACT_TOPICS as readonly string[]).includes(value);
+}
+
 function boundedStrOrNull(v: unknown, maxLength: number): string | null {
   if (typeof v !== 'string') return null;
   const trimmed = v.trim();
@@ -235,6 +248,18 @@ function boundedEmailOrNull(v: unknown, maxLength: number): string | null {
 export const CONTACT_REQUIRED_FIELDS = ['name', 'email', 'topic', 'message'] as const;
 export type ContactErrorField = (typeof CONTACT_REQUIRED_FIELDS)[number];
 
+function requiredFieldError(
+  raw: unknown,
+  max: number,
+  emptyMsg: string,
+  longMsg: string,
+): string | undefined {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (trimmed.length === 0) return emptyMsg;
+  if (trimmed.length > max) return longMsg;
+  return undefined;
+}
+
 /**
  * Field-level validation companion to parseContactFormFields. Returns a map
  * of field → human error message for each invalid field; empty object means
@@ -246,12 +271,13 @@ export function validateContactFields(
   const errors: Partial<Record<ContactErrorField, string>> = {};
 
   // name
-  const nameRaw = typeof raw.name === 'string' ? raw.name.trim() : '';
-  if (nameRaw.length === 0) {
-    errors.name = 'Enter your name';
-  } else if (nameRaw.length > CONTACT_FIELD_MAX) {
-    errors.name = 'Name is too long';
-  }
+  const nameErr = requiredFieldError(
+    raw.name,
+    CONTACT_FIELD_MAX,
+    'Enter your name',
+    'Name is too long',
+  );
+  if (nameErr) errors.name = nameErr;
 
   // email
   const emailRaw = typeof raw.email === 'string' ? raw.email.trim() : '';
@@ -263,19 +289,18 @@ export function validateContactFields(
 
   // topic
   const topicRaw = typeof raw.topic === 'string' ? raw.topic.trim() : '';
-  if (topicRaw.length === 0) {
+  if (topicRaw.length === 0 || !isContactTopic(topicRaw)) {
     errors.topic = 'Pick a topic';
-  } else if (topicRaw.length > CONTACT_FIELD_MAX) {
-    errors.topic = 'Topic is too long';
   }
 
   // message
-  const messageRaw = typeof raw.message === 'string' ? raw.message.trim() : '';
-  if (messageRaw.length === 0) {
-    errors.message = 'Enter a message';
-  } else if (messageRaw.length > CONTACT_MESSAGE_MAX) {
-    errors.message = 'Message is too long';
-  }
+  const messageErr = requiredFieldError(
+    raw.message,
+    CONTACT_MESSAGE_MAX,
+    'Enter a message',
+    'Message is too long',
+  );
+  if (messageErr) errors.message = messageErr;
 
   return errors;
 }
