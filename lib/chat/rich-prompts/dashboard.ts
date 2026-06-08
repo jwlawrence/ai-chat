@@ -1,14 +1,16 @@
 /**
  * Rich prompt for the "Show a dashboard" chip.
- * Produces the "Under the hood." bento: a 2x2 hero (cached-catalog token size
- * plus a pie of the system-prompt budget), four 1x1 tiles (primitive count,
- * model count, a dual-stat caching tile, an open-access tile), and a full-width
- * metering banner. Content is about how this app is built.
+ * Produces the "Under the hood." bento, framed as capabilities rather than
+ * config values: a 2x2 hero (the cached-catalog share of the system prompt
+ * plus a two-slice pie), four 1x1 tiles (composable primitives, self-correcting
+ * validated specs, a streamed + metered dual-stat, security), and a full-width
+ * "the model drew this" banner.
  *
- * Numbers are sourced from the codebase: 23 catalog primitives, 4 models,
- * the ~5.4K-token component catalog (kept rounded to survive catalog drift;
- * the catalog-prompt-size test guards it under 6000 tokens). The pie split is
- * illustrative (the cached catalog is the dominant slice of the system prompt).
+ * Numbers are sourced from the codebase: 23 catalog primitives; the ~5.4K-token
+ * component catalog is the dominant slice of the system prompt and is reused
+ * every turn via Azure's auto-cache. The ~78% cached split is illustrative
+ * (rounded, directionally true). The pie renders two-colored (the Chart
+ * primitive colors sectors per data row).
  */
 export const DASHBOARD_RICH_PROMPT = [
   'Use the renderUI tool to emit a single Card titled "Under the hood."',
@@ -20,31 +22,32 @@ export const DASHBOARD_RICH_PROMPT = [
   'block, and a full-width banner across the bottom row.',
   '',
   '1. Hero. GridCell colSpan=2 rowSpan=2.',
-  '   Contains a Card titled "System-prompt budget." with two children:',
-  '   a. Heading level=1 text="~5.4K tokens"',
-  '   b. Chart kind="pie" showing the cached-catalog share of the system prompt:',
-  '      data=[{"label":"Cached catalog","value":78},{"label":"Steering and tools","value":22}],',
+  '   Contains a Card titled "Caching does the heavy lifting." with three children:',
+  '   a. Heading level=1 text="~78%"',
+  '   b. Text muted=true text="of the system prompt is the cached catalog, reused on every turn"',
+  '   c. Chart kind="pie" showing the cached vs fresh split:',
+  '      data=[{"label":"Cached catalog","value":78},{"label":"Sent fresh","value":22}],',
   '      series=[{"key":"value"}], xKey="label", legend=false.',
   '',
   '2. Small. GridCell colSpan=1 rowSpan=1.',
-  '   KPI value="23" label="Renderable UI primitives in the catalog"',
+  '   KPI value="23 → ∞" label="UI primitives the model composes into any layout"',
   '',
   '3. Small. GridCell colSpan=1 rowSpan=1.',
-  '   KPI value="4" label="Models you can switch between"',
+  '   KPI value="Self-correcting" label="Specs are Zod-validated before they render; invalid output bounces back for the model to fix"',
   '',
   '4. Small. GridCell colSpan=1 rowSpan=1.',
   '   Card with no title, containing two stacked mini-stats (each a Heading',
   '   level 3 above a small muted Text label), in this order:',
-  '   a. Heading level=3 text="Position 0"',
-  '   b. Text muted=true text="Where the catalog is pinned for cache hits"',
-  '   c. Heading level=3 text="1024 tokens"',
-  '   d. Text muted=true text="Azure auto-cache threshold"',
+  '   a. Heading level=3 text="Streamed"',
+  '   b. Text muted=true text="Token by token, no spinners"',
+  '   c. Heading level=3 text="Metered"',
+  '   d. Text muted=true text="Every turn budget-checked, daily cap enforced"',
   '',
   '5. Small. GridCell colSpan=1 rowSpan=1.',
-  '   KPI value="Anon + BYOK" label="Turnstile-gated guests, bring-your-own Azure key"',
+  '   KPI value="Secure by design" label="Turnstile-gated guests, bring-your-own-key support for devs"',
   '',
   '6. Banner. GridCell colSpan=4 rowSpan=1.',
-  '   KPI value="Daily-cap metered" label="Preflight budget check before each turn, usage ledger after"',
+  '   KPI value="The model drew this." label="Every tile here was generated from one renderUI call, not hand-coded"',
   '',
   'Rules, applied strictly:',
   '- Use ONLY Card, Grid, GridCell, KPI, Heading, Text, and Chart primitives.',
@@ -52,8 +55,8 @@ export const DASHBOARD_RICH_PROMPT = [
   '- Card props are { title } only (omit title when noted). No footer.',
   '- Heading props are { level, text } only.',
   '- Text props are { text, muted? } only.',
-  '- Use the value and label strings VERBATIM, including symbols (~, +) and units (tokens).',
-  '- No em-dashes or en-dashes anywhere. Use commas, periods, or parens.',
+  '- Use the value and label strings VERBATIM, including symbols (~, %, →, ∞) and punctuation.',
+  '- No em-dashes or en-dashes anywhere. Use commas, periods, parens, or semicolons.',
   '- No commentary, subtitles, footers, or text outside the outer Card.',
   '',
   'Spec shape:',
@@ -63,23 +66,24 @@ export const DASHBOARD_RICH_PROMPT = [
   '    "dashboard": { "type": "Card", "props": { "title": "Under the hood." }, "children": ["grid"] },',
   '    "grid": { "type": "Grid", "props": { "columns": 4, "gap": "normal" }, "children": ["hero", "s1", "s2", "s3", "s4", "banner"] },',
   '    "hero": { "type": "GridCell", "props": { "colSpan": 2, "rowSpan": 2 }, "children": ["hero-card"] },',
-  '    "hero-card": { "type": "Card", "props": { "title": "System-prompt budget." }, "children": ["hero-tok", "hero-pie"] },',
-  '    "hero-tok": { "type": "Heading", "props": { "level": 1, "text": "~5.4K tokens" }, "children": [] },',
-  '    "hero-pie": { "type": "Chart", "props": { "kind": "pie", "data": [{"label": "Cached catalog", "value": 78}, {"label": "Steering and tools", "value": 22}], "series": [{"key": "value"}], "xKey": "label", "legend": false }, "children": [] },',
+  '    "hero-card": { "type": "Card", "props": { "title": "Caching does the heavy lifting." }, "children": ["hero-pct", "hero-sub", "hero-pie"] },',
+  '    "hero-pct": { "type": "Heading", "props": { "level": 1, "text": "~78%" }, "children": [] },',
+  '    "hero-sub": { "type": "Text", "props": { "text": "of the system prompt is the cached catalog, reused on every turn", "muted": true }, "children": [] },',
+  '    "hero-pie": { "type": "Chart", "props": { "kind": "pie", "data": [{"label": "Cached catalog", "value": 78}, {"label": "Sent fresh", "value": 22}], "series": [{"key": "value"}], "xKey": "label", "legend": false }, "children": [] },',
   '    "s1": { "type": "GridCell", "props": { "colSpan": 1, "rowSpan": 1 }, "children": ["k1"] },',
-  '    "k1": { "type": "KPI", "props": { "value": "23", "label": "Renderable UI primitives in the catalog" }, "children": [] },',
+  '    "k1": { "type": "KPI", "props": { "value": "23 → ∞", "label": "UI primitives the model composes into any layout" }, "children": [] },',
   '    "s2": { "type": "GridCell", "props": { "colSpan": 1, "rowSpan": 1 }, "children": ["k2"] },',
-  '    "k2": { "type": "KPI", "props": { "value": "4", "label": "Models you can switch between" }, "children": [] },',
+  '    "k2": { "type": "KPI", "props": { "value": "Self-correcting", "label": "Specs are Zod-validated before they render; invalid output bounces back for the model to fix" }, "children": [] },',
   '    "s3": { "type": "GridCell", "props": { "colSpan": 1, "rowSpan": 1 }, "children": ["s3-card"] },',
   '    "s3-card": { "type": "Card", "props": {}, "children": ["s3-v1", "s3-l1", "s3-v2", "s3-l2"] },',
-  '    "s3-v1": { "type": "Heading", "props": { "level": 3, "text": "Position 0" }, "children": [] },',
-  '    "s3-l1": { "type": "Text", "props": { "text": "Where the catalog is pinned for cache hits", "muted": true }, "children": [] },',
-  '    "s3-v2": { "type": "Heading", "props": { "level": 3, "text": "1024 tokens" }, "children": [] },',
-  '    "s3-l2": { "type": "Text", "props": { "text": "Azure auto-cache threshold", "muted": true }, "children": [] },',
+  '    "s3-v1": { "type": "Heading", "props": { "level": 3, "text": "Streamed" }, "children": [] },',
+  '    "s3-l1": { "type": "Text", "props": { "text": "Token by token, no spinners", "muted": true }, "children": [] },',
+  '    "s3-v2": { "type": "Heading", "props": { "level": 3, "text": "Metered" }, "children": [] },',
+  '    "s3-l2": { "type": "Text", "props": { "text": "Every turn budget-checked, daily cap enforced", "muted": true }, "children": [] },',
   '    "s4": { "type": "GridCell", "props": { "colSpan": 1, "rowSpan": 1 }, "children": ["k4"] },',
-  '    "k4": { "type": "KPI", "props": { "value": "Anon + BYOK", "label": "Turnstile-gated guests, bring-your-own Azure key" }, "children": [] },',
+  '    "k4": { "type": "KPI", "props": { "value": "Secure by design", "label": "Turnstile-gated guests, bring-your-own-key support for devs" }, "children": [] },',
   '    "banner": { "type": "GridCell", "props": { "colSpan": 4, "rowSpan": 1 }, "children": ["kb"] },',
-  '    "kb": { "type": "KPI", "props": { "value": "Daily-cap metered", "label": "Preflight budget check before each turn, usage ledger after" }, "children": [] }',
+  '    "kb": { "type": "KPI", "props": { "value": "The model drew this.", "label": "Every tile here was generated from one renderUI call, not hand-coded" }, "children": [] }',
   '  }',
   '}',
 ].join('\n');
