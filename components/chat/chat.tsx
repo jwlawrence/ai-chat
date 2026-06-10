@@ -142,6 +142,7 @@ export function Chat({
           ) : (
             <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3">
               <ChipDeck
+                compact
                 onSelect={handleChipSelect}
                 disabled={status === 'streaming' || status === 'submitted'}
               />
