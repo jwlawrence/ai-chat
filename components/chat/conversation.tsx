@@ -25,6 +25,7 @@ import {
 } from '@/lib/contact/web3forms';
 import { ACTION_REGISTRY } from '@/lib/json-render/catalog';
 import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
+import { AnimatedCardShell } from './animated-card-shell';
 import { ChipDeck } from './chip-deck';
 
 type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
@@ -54,7 +55,7 @@ export function messageHasRenderableContent(m: UIMessage): boolean {
   const hasPressChip = messageHasPressChip(m);
   return (m.parts ?? []).some((p) => {
     if (p.type === 'text') return !(hasRenderUI || hasPressChip) && p.text.length > 0;
-    if (p.type === 'data-press') return !((p as { data?: PressData }).data?.hideTranscriptChip);
+    if (p.type === 'data-press') return !(p as { data?: PressData }).data?.hideTranscriptChip;
     if (p.type === 'file') return p.mediaType?.startsWith('image/') ?? false;
     if (p.type === 'tool-webSearch') return true;
     if (p.type === 'tool-renderUI') return (p as { state?: string }).state === 'output-available';
@@ -463,14 +464,14 @@ const RenderUIPart = memo(function RenderUIPart({
   // object each render is fine.
   const initialState = stripSlashKeys(spec?.state ?? undefined);
   return (
-    <div data-spec-id={spec?.root}>
+    <AnimatedCardShell specId={spec?.root}>
       <RenderUICard
         spec={spec}
         initialState={initialState}
         sendMessage={sendMessage}
         initiallyLocked={initiallyLocked}
       />
-    </div>
+    </AnimatedCardShell>
   );
 });
 
