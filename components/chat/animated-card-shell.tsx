@@ -39,7 +39,13 @@ export function AnimatedCardShell({ specId, children }: { specId?: string; child
       if (!scope) return;
       const mm = gsap.matchMedia();
       mm.add('(prefers-reduced-motion: no-preference)', () => {
-        gsap.from(scope, { opacity: 0, y: 12, duration: 0.4, ease: 'power2.out' });
+        gsap.from(scope, {
+          opacity: 0,
+          y: 12,
+          duration: 0.4,
+          ease: 'power2.out',
+          clearProps: 'opacity,transform',
+        });
         const targets = getStaggerTargets(scope);
         if (targets.length > 0) {
           gsap.from(targets, {
