@@ -1,10 +1,41 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest';
-import { getStaggerTargets } from './animated-card-shell';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AnimatedCardShell, getStaggerTargets } from './animated-card-shell';
 
-// Build a scope element (mirrors the `<div data-spec-id>` wrapper) whose
-// firstElementChild is the rendered root component's outer node.
+// Hoisted handles so the vi.mock factories below can reference them.
+const { fromSpy, motion } = vi.hoisted(() => ({
+  fromSpy: vi.fn(),
+  motion: { allowed: true },
+}));
+
+// Mock GSAP: record `from` calls; `matchMedia().add` runs the callback only
+// when motion is "allowed" (simulates prefers-reduced-motion: no-preference).
+vi.mock('gsap', () => ({
+  default: {
+    from: (...args: unknown[]) => fromSpy(...args),
+    matchMedia: () => ({
+      add: (_query: string, cb: () => void) => {
+        if (motion.allowed) cb();
+      },
+    }),
+  },
+}));
+
+// Mock useGSAP to run the callback once in a layout effect (after the DOM is
+// committed), matching the real hook's pre-paint timing closely enough to test.
+vi.mock('@gsap/react', async () => {
+  const React = await import('react');
+  return {
+    useGSAP: (cb: () => void) => {
+      React.useLayoutEffect(() => {
+        cb();
+      }, []);
+    },
+  };
+});
+
 function makeScope(innerHTML: string): HTMLElement {
   const scope = document.createElement('div');
   scope.setAttribute('data-spec-id', 'root');
@@ -23,8 +54,11 @@ describe('getStaggerTargets', () => {
         <div data-slot="card-footer">F</div>
       </div>
     `);
-    const targets = getStaggerTargets(scope);
-    expect(targets.map((el) => el.getAttribute('data-testid'))).toEqual(['c1', 'c2', 'c3']);
+    expect(getStaggerTargets(scope).map((el) => el.getAttribute('data-testid'))).toEqual([
+      'c1',
+      'c2',
+      'c3',
+    ]);
   });
 
   it('returns the root element direct children for a Grid root', () => {
@@ -62,5 +96,60 @@ describe('getStaggerTargets', () => {
 
   it('returns an empty array when the scope has no element child', () => {
     expect(getStaggerTargets(makeScope(''))).toEqual([]);
+  });
+});
+
+describe('AnimatedCardShell', () => {
+  beforeEach(() => {
+    fromSpy.mockClear();
+    motion.allowed = true;
+  });
+  afterEach(cleanup);
+
+  it('renders children inside a div carrying data-spec-id', () => {
+    render(
+      <AnimatedCardShell specId="spec-1">
+        <div data-testid="content">hi</div>
+      </AnimatedCardShell>,
+    );
+    expect(screen.getByTestId('content')).toBeInTheDocument();
+    expect(document.querySelector('[data-spec-id="spec-1"]')).not.toBeNull();
+  });
+
+  it('animates the container and the stagger targets when motion is allowed', () => {
+    render(
+      <AnimatedCardShell specId="spec-xyz">
+        <div data-slot="card">
+          <div data-slot="card-content">
+            <div data-testid="kid">hello</div>
+          </div>
+        </div>
+      </AnimatedCardShell>,
+    );
+
+    expect(fromSpy).toHaveBeenCalledTimes(2);
+
+    const [containerArg] = fromSpy.mock.calls[0];
+    expect((containerArg as HTMLElement).getAttribute('data-spec-id')).toBe('spec-xyz');
+
+    const [targetsArg, varsArg] = fromSpy.mock.calls[1];
+    expect(Array.isArray(targetsArg)).toBe(true);
+    expect((targetsArg as Element[]).length).toBe(1);
+    expect((varsArg as { stagger?: unknown }).stagger).toBeDefined();
+  });
+
+  it('does not animate when prefers-reduced-motion is set', () => {
+    motion.allowed = false;
+    render(
+      <AnimatedCardShell specId="spec-2">
+        <div data-slot="card">
+          <div data-slot="card-content">
+            <div data-testid="kid2">hello</div>
+          </div>
+        </div>
+      </AnimatedCardShell>,
+    );
+    expect(screen.getByTestId('kid2')).toBeInTheDocument();
+    expect(fromSpy).not.toHaveBeenCalled();
   });
 });
