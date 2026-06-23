@@ -649,16 +649,25 @@ function EmptyState({
           <Sparkles className="size-5 text-muted-foreground" />
         </div>
         <h1 className="font-semibold text-3xl tracking-tight">
-          {isAnonymous ? 'A chat that builds its own UI.' : 'How can I help today?'}
+          {isAnonymous ? 'A chat that responds with interactive UI.' : 'How can I help today?'}
         </h1>
         <p className="max-w-md text-muted-foreground text-sm">
           {isAnonymous
-            ? 'Pick a starter below. The model answers with interactive components, not plain text.'
+            ? 'Pick a starter below. The model dynamically answers with interactive components, not plain text.'
             : 'Pick a starter below, or type your own prompt at the bottom.'}
         </p>
         {isAnonymous ? (
           <p className="max-w-md text-muted-foreground text-xs">
-            A portfolio piece by Josh Lawrence.
+            A portfolio piece by{' '}
+            <a
+              href="https://linkedin.com/in/joshlawrence"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
+            >
+              Joshua Lawrence
+            </a>
+            .
           </p>
         ) : null}
       </div>
