@@ -7,7 +7,7 @@ import {
   type UIMessage,
 } from 'ai';
 import { z } from 'zod';
-import { DEFAULT_MODEL, isModelId, type ModelId } from '@/lib/ai/models';
+import { isModelId, type ModelId } from '@/lib/ai/models';
 import { getModel, type ProviderOverride } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { generateTitle } from '@/lib/ai/title';
@@ -32,19 +32,13 @@ import {
 import {
   appendMessages,
   countMessages,
-  createSession,
-  getSession,
-  isUserOwnedSession,
   renameSession,
   touchSession,
   trimTrailingMessages,
 } from '@/lib/db/queries';
-import {
-  buildSignInResumeSpec,
-  buildSignInSpec,
-  writeServerCard,
-} from '@/lib/json-render/server-card';
+import { buildSignInSpec } from '@/lib/json-render/server-card';
 import { createStreamOnFinish } from './on-finish';
+import { createServerCardResponse, resolveOrCreateSession } from './server-card-response';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -65,42 +59,6 @@ function readCookie(cookieHeader: string, name: string): string | null {
   return null;
 }
 
-/**
- * When an anonymous actor provides a sessionId that resolves to null (because
- * getSession gates on ownership), check whether the session actually exists but
- * is user-owned. If so, stream a sign-in-resume card instead of returning a 404.
- *
- * Returns a Response (the sign-in stream) when the caller should short-circuit,
- * or null when the 404 path should proceed.
- *
- * Intentionally omits the `data-session` chunk: the caller already holds the
- * session id and we never reassign it to the anonymous actor. Intentionally has
- * no `onFinish` persistence: the conversation already exists under the user's
- * account; nothing new needs to be written for this unauthenticated probe.
- */
-async function maybeSignInResumeResponse(
-  sessionId: string,
-  userId: string | null,
-  incoming: UIMessage[],
-): Promise<Response | null> {
-  if (userId !== null) return null;
-  if (!(await isUserOwnedSession(sessionId))) return null;
-
-  const spec = buildSignInResumeSpec(sessionId);
-  const toolCallId = `injected-${crypto.randomUUID()}`;
-  const stream = createUIMessageStream({
-    execute: ({ writer }) => {
-      try {
-        writeServerCard(writer, spec, toolCallId);
-      } catch (err) {
-        console.error('[session-resume] writeServerCard failed', err);
-      }
-    },
-    originalMessages: incoming,
-  });
-  return createUIMessageStreamResponse({ stream });
-}
-
 const BodySchema = z.object({
   sessionId: z.string().uuid().optional(),
   model: z.string().optional(),
@@ -116,7 +74,28 @@ const BodySchema = z.object({
 
 const CONTEXT_WINDOW = Number.parseInt(process.env.CONTEXT_WINDOW_MESSAGES ?? '50', 10);
 
+/** Cap on tool-call/response steps per turn so runaway loops stay bounded. */
+const MAX_STEPS_PER_TURN = 5;
+
+/** Fallback when MAX_OUTPUT_TOKENS_PER_TURN is unset. */
+const DEFAULT_MAX_OUTPUT_TOKENS = 10_000;
+
 const tools = { webSearch, renderUI };
+
+/**
+ * Trim/append bookkeeping shared by every persisting branch: how many trailing
+ * DB rows the client's shorter history invalidates, and which incoming
+ * messages are new relative to the DB.
+ */
+async function reconcileForPersistence(
+  sessionId: string,
+  isNewSession: boolean,
+  userId: string | null,
+  incoming: UIMessage[],
+) {
+  const dbCount = isNewSession ? 0 : await countMessages(sessionId, userId);
+  return reconcileIncoming(dbCount, incoming);
+}
 
 export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(await req.json());
@@ -124,6 +103,9 @@ export async function POST(req: Request) {
     return new Response('Bad request', { status: 400 });
   }
   const body = parsed.data;
+  // Boundary cast: BodySchema validates the envelope (role + parts array) and
+  // passes unknown part shapes through; the AI SDK's UIMessage is the runtime
+  // contract from here on.
   const incoming = body.messages as unknown as UIMessage[];
 
   const userId = await getUserId();
@@ -223,87 +205,41 @@ export async function POST(req: Request) {
       );
     }
 
-    let contactSessionId: string;
-    let isNewContactSession = false;
-    if (body.sessionId) {
-      const session = await getSession(body.sessionId, userId);
-      if (!session) return new Response('Session not found', { status: 404 });
-      contactSessionId = session.id;
-    } else {
-      const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
-      const created = await createSession({ model: candidate, userId, anonymousId });
-      contactSessionId = created.id;
-      isNewContactSession = true;
-    }
+    // Contact keeps its plain 404 (no sign-in-resume probe): the submit is a
+    // follow-up inside an existing flow, not a place to start account recovery.
+    const resolved = await resolveOrCreateSession({
+      bodySessionId: body.sessionId,
+      bodyModel: body.model,
+      userId,
+      anonymousId,
+      incoming,
+      allowSignInResume: false,
+    });
+    if (resolved instanceof Response) return resolved;
 
-    const dbCount = isNewContactSession ? 0 : await countMessages(contactSessionId, userId);
-    const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
-
-    const replySpec = buildAutoReplySpec(contactSubmission);
-    const contactToolCallId = `injected-${crypto.randomUUID()}`;
+    const { trimCount, newMessages: newUserMessages } = await reconcileForPersistence(
+      resolved.sessionId,
+      resolved.isNew,
+      userId,
+      incoming,
+    );
 
     // Note: the actual email delivery happens client-side. Web3Forms sits
     // behind Cloudflare's managed bot challenge, which rejects server-side
     // fetches with a 403 challenge page. The browser passes the challenge
-    // automatically, so the submitForm handler in conversation.tsx fires
-    // the POST in parallel with this server submit. We only handle the
-    // deterministic auto-reply card here.
-
-    // Track whether the server card actually made it into the stream so the
-    // onFinish persist doesn't lie about delivery. Without this, a thrown
-    // writeServerCard still leaves us appending an assistant tool-renderUI
-    // part claiming `output: replySpec` — the user reloads and the transcript
-    // shows an "answered" turn for a card they never saw.
-    let cardWritten = false;
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        writer.write({
-          type: 'data-session',
-          data: { id: contactSessionId, isNew: isNewContactSession },
-          transient: true,
-        });
-        try {
-          writeServerCard(writer, replySpec, contactToolCallId);
-          cardWritten = true;
-        } catch (err) {
-          console.error('[contact] writeServerCard failed', err);
-        }
-      },
-      originalMessages: incoming,
-      onFinish: async () => {
-        try {
-          if (trimCount > 0) {
-            await trimTrailingMessages(contactSessionId, userId, trimCount);
-          }
-          const persistedMessages: Array<{ role: string; parts: unknown[] }> = newUserMessages.map(
-            (m) => ({ role: m.role, parts: m.parts }),
-          );
-          if (cardWritten) {
-            persistedMessages.push({
-              role: 'assistant',
-              parts: [
-                {
-                  type: 'tool-renderUI',
-                  toolCallId: contactToolCallId,
-                  state: 'output-available',
-                  input: replySpec,
-                  output: replySpec,
-                },
-              ],
-            });
-          }
-          await appendMessages(
-            contactSessionId,
-            userId,
-            persistedMessages as Parameters<typeof appendMessages>[2],
-          );
-          await touchSession(contactSessionId, userId);
-        } catch (err) {
-          console.error('[contact] persistence error in onFinish', err);
-        }
-      },
+    // automatically, so the submitForm handler fires the POST in parallel
+    // with this server submit. We only handle the deterministic auto-reply
+    // card here.
+    return createServerCardResponse({
+      spec: buildAutoReplySpec(contactSubmission),
+      sessionId: resolved.sessionId,
+      isNewSession: resolved.isNew,
+      incoming,
+      trimCount,
+      newUserMessages,
+      userId,
+      logTag: 'contact',
     });
-    return createUIMessageStreamResponse({ stream });
   }
 
   // 3) Chip-only gate: latest user message must carry a known chipId.
@@ -328,78 +264,34 @@ export async function POST(req: Request) {
   ) {
     // Persist the wall turn so post-signin claim recovers the user's last prompt
     // + the card they saw. Without this, the user signs in via the card and
-    // finds their conversation missing.
-    let wallSessionId: string;
-    let isNewWallSession = false;
-    if (body.sessionId) {
-      const session = await getSession(body.sessionId, userId);
-      if (!session) {
-        const resumeResponse = await maybeSignInResumeResponse(body.sessionId, userId, incoming);
-        if (resumeResponse) return resumeResponse;
-        return new Response('Session not found', { status: 404 });
-      }
-      wallSessionId = session.id;
-    } else {
-      const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
-      const created = await createSession({ model: candidate, userId, anonymousId });
-      wallSessionId = created.id;
-      isNewWallSession = true;
-    }
-
-    // Reconcile so the user's new message is persisted exactly once (matches the
-    // normal stream's reconciliation logic at line ~190).
-    const dbCount = isNewWallSession ? 0 : await countMessages(wallSessionId, userId);
-    const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
-
-    // Build spec + toolCallId once so the persisted part exactly matches the
-    // streamed part.
-    const spec = buildSignInSpec();
-    const wallToolCallId = `injected-${crypto.randomUUID()}`;
-
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        writer.write({
-          type: 'data-session',
-          data: { id: wallSessionId, isNew: isNewWallSession },
-          transient: true,
-        });
-        try {
-          writeServerCard(writer, spec, wallToolCallId);
-        } catch (err) {
-          console.error('[wall] writeServerCard failed', err);
-        }
-      },
-      originalMessages: incoming,
-      onFinish: async () => {
-        // Persist user's new message(s) + the wall card as an assistant message
-        // with a tool-renderUI part. claimAnonSessions re-parents on sign-in.
-        // Persistence errors after stream close can't surface to client; log.
-        try {
-          if (trimCount > 0) {
-            await trimTrailingMessages(wallSessionId, userId, trimCount);
-          }
-          await appendMessages(wallSessionId, userId, [
-            ...newUserMessages.map((m) => ({ role: m.role, parts: m.parts })),
-            {
-              role: 'assistant',
-              parts: [
-                {
-                  type: 'tool-renderUI',
-                  toolCallId: wallToolCallId,
-                  state: 'output-available',
-                  input: spec,
-                  output: spec,
-                },
-              ],
-            },
-          ]);
-          await touchSession(wallSessionId, userId);
-        } catch (err) {
-          console.error('[wall] persistence error in onFinish', err);
-        }
-      },
+    // finds their conversation missing. claimAnonSessions re-parents on sign-in.
+    const resolved = await resolveOrCreateSession({
+      bodySessionId: body.sessionId,
+      bodyModel: body.model,
+      userId,
+      anonymousId,
+      incoming,
+      allowSignInResume: true,
     });
-    return createUIMessageStreamResponse({ stream });
+    if (resolved instanceof Response) return resolved;
+
+    const { trimCount, newMessages: newUserMessages } = await reconcileForPersistence(
+      resolved.sessionId,
+      resolved.isNew,
+      userId,
+      incoming,
+    );
+
+    return createServerCardResponse({
+      spec: buildSignInSpec(),
+      sessionId: resolved.sessionId,
+      isNewSession: resolved.isNew,
+      incoming,
+      trimCount,
+      newUserMessages,
+      userId,
+      logTag: 'wall',
+    });
   }
 
   if (!gate.allow) {
@@ -410,34 +302,32 @@ export async function POST(req: Request) {
   }
 
   // Resolve session + model
-  let sessionId: string;
-  let isNewSession = false;
-  let model: ModelId;
-
-  if (body.sessionId) {
-    const session = await getSession(body.sessionId, userId);
-    if (!session) {
-      const resumeResponse = await maybeSignInResumeResponse(body.sessionId, userId, incoming);
-      if (resumeResponse) return resumeResponse;
-      return new Response('Session not found', { status: 404 });
-    }
-    if (!isModelId(session.model)) return new Response('Bad model on session', { status: 500 });
-    sessionId = session.id;
-    model = session.model;
-  } else {
-    const candidate = body.model && isModelId(body.model) ? body.model : DEFAULT_MODEL;
-    const created = await createSession({ model: candidate, userId, anonymousId });
-    sessionId = created.id;
-    model = candidate;
-    isNewSession = true;
-  }
+  const resolved = await resolveOrCreateSession({
+    bodySessionId: body.sessionId,
+    bodyModel: body.model,
+    userId,
+    anonymousId,
+    incoming,
+    allowSignInResume: true,
+  });
+  if (resolved instanceof Response) return resolved;
+  // New sessions always carry a validated candidate; only a corrupted existing
+  // session can fail this check.
+  if (!isModelId(resolved.model)) return new Response('Bad model on session', { status: 500 });
+  const sessionId = resolved.sessionId;
+  const isNewSession = resolved.isNew;
+  const model: ModelId = resolved.model;
 
   // Reconcile incoming history vs DB so persistence is correct for send AND regenerate.
   // Use `incoming` (full client history) for reconciliation — NOT `windowed` (which is
   // truncated for the model). Otherwise long sessions would falsely trim in-DB messages.
   // The trim happens only after a successful onFinish so aborted/error turns don't disturb history.
-  const dbCount = isNewSession ? 0 : await countMessages(sessionId, userId);
-  const { trimCount, newMessages: newUserMessages } = reconcileIncoming(dbCount, incoming);
+  const { trimCount, newMessages: newUserMessages } = await reconcileForPersistence(
+    sessionId,
+    isNewSession,
+    userId,
+    incoming,
+  );
 
   // The view sent to the model: sliding window of the most recent messages,
   // with the latest chip-tagged user message swapped from its short transcript
@@ -497,8 +387,8 @@ export async function POST(req: Request) {
           return undefined;
         },
         // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
-        stopWhen: stepCountIs(5),
-        maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS_PER_TURN ?? 10000),
+        stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
+        maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS_PER_TURN ?? DEFAULT_MAX_OUTPUT_TOKENS),
         abortSignal: req.signal,
         // Persist usage BEFORE the stream closes so the client's SWR mutate() in useChat's
         // onFinish picks up fresh totals.

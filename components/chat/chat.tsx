@@ -25,6 +25,9 @@ type Props = {
   hasTrust?: boolean;
 };
 
+/** Delay before the safety-net budget revalidation after a turn finishes. */
+const BUDGET_REVALIDATE_DELAY_MS = 1500;
+
 export function Chat({
   sessionId: initialSessionId,
   initialModel,
@@ -94,7 +97,7 @@ export function Chat({
       // before the outer stream closes, so the immediate mutate should read fresh
       // spend. A delayed revalidation covers any edge-case timing drift.
       mutate('/api/budget');
-      setTimeout(() => mutate('/api/budget'), 1500);
+      setTimeout(() => mutate('/api/budget'), BUDGET_REVALIDATE_DELAY_MS);
     },
   });
 

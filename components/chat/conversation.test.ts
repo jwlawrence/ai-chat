@@ -1,19 +1,19 @@
 /**
- * Fix #4: Unit tests for the messageHasRenderUI predicate exported from
- * conversation.tsx.  Pure function — no JSX or DOM required.
+ * Fix #4: Unit tests for the messageHasRenderUI predicate and friends
+ * (now in lib/chat/press).  Pure functions — no JSX or DOM required.
  */
 
 import { createStateStore } from '@json-render/core';
 import type { UIMessage } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
-import type { PressData } from './conversation';
+import { buildSubmitFormHandler } from '@/lib/chat/card-handlers';
 import {
-  buildSubmitFormHandler,
   messageHasPressChip,
   messageHasRenderableContent,
   messageHasRenderUI,
   messageHasVisibleOutput,
-} from './conversation';
+  type PressData,
+} from '@/lib/chat/press';
 
 // ---------------------------------------------------------------------------
 // R — client Web3Forms dispatch spy

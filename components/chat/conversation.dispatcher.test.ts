@@ -5,7 +5,7 @@
 
 import { createStateStore } from '@json-render/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildEndpointHandlers, buildSubmitFormHandler } from './conversation';
+import { buildEndpointHandlers, buildSubmitFormHandler } from '@/lib/chat/card-handlers';
 
 // ---------------------------------------------------------------------------
 // Sonner mock — must be set up before imports above are evaluated in this
@@ -15,6 +15,10 @@ import { buildEndpointHandlers, buildSubmitFormHandler } from './conversation';
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
+    // buildSubmitFormHandler's contact branch fires toast.warning from an
+    // async .then/.catch — an incomplete mock turns that into an unhandled
+    // rejection reported at the runner level.
+    warning: vi.fn(),
   },
 }));
 

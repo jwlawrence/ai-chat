@@ -2,11 +2,10 @@
 
 import useSWR from 'swr';
 import type { Session } from '@/lib/db/schema';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+import { jsonFetcher } from '@/lib/swr/fetcher';
 
 export function useSessions() {
-  return useSWR<Session[]>('/api/sessions', fetcher, {
+  return useSWR<Session[]>('/api/sessions', jsonFetcher, {
     revalidateOnFocus: false,
     fallbackData: [],
   });
