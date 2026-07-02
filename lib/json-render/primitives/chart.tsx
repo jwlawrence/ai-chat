@@ -133,7 +133,9 @@ function ChartBody(props: ChartProps) {
     <ReferenceLine
       key={`ann-${ann.x}-${ann.label}`}
       x={ann.x}
-      stroke="hsl(var(--border))"
+      // --border is an oklch() value in globals.css; wrapping it in hsl()
+      // produces an invalid color and the line silently doesn't paint.
+      stroke="var(--border)"
       strokeDasharray="3 3"
       label={{
         value: ann.label,

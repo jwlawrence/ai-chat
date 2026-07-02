@@ -5,6 +5,11 @@
  * The chat route detects the resulting submit and emits a deterministic
  * auto-reply card server-side. Neutral, app-focused contact form (no hiring
  * framing).
+ *
+ * Below the form, a Divider and a one-item Accordion explain what happens on
+ * Send. The form block itself must stay byte-stable: the route's contact
+ * branch, validateContactFields, and interactive.test.ts all key off its
+ * exact field names and options.
  */
 export const INTERACTIVE_RICH_PROMPT = [
   'Use the renderUI tool to emit a single Card titled "Get in touch."',
@@ -34,14 +39,22 @@ export const INTERACTIVE_RICH_PROMPT = [
   '          The `on` block goes at the element level (alongside type/props/children),',
   '          NOT inside props.',
   '',
+  '  3. A Divider.',
+  '',
+  '  4. An Accordion with ONE item (id="next",',
+  '     label="What happens when you press Send") containing a List with the',
+  '     three items given verbatim in the spec shape.',
+  '',
   'Rules, applied strictly:',
-  '- Use ONLY Card, Text, Form, Input, Select, Textarea, and Button primitives.',
+  '- Use ONLY Card, Text, Form, Input, Select, Textarea, Button, Divider, Accordion, and List primitives.',
   '- Card props are { title } only. No footer.',
   '- Form props are { name } only.',
   '- Input props are { name, label, placeholder, kind } only.',
   '- Select props are { name, label, options } only. Use the options array VERBATIM.',
   '- Textarea props are { name, label, placeholder, rows } only.',
   '- Button props are { label, variant } only. Wire the action via the element-level `on.press`.',
+  '- Divider props are {} (empty object).',
+  '- List props are { items } only. Use the items array VERBATIM.',
   '- No em-dashes or en-dashes anywhere. Use commas, periods, or parens.',
   '- No commentary, subtitles, footers, or text outside the outer Card.',
   '',
@@ -49,14 +62,21 @@ export const INTERACTIVE_RICH_PROMPT = [
   '{',
   '  "root": "form-card",',
   '  "elements": {',
-  '    "form-card": { "type": "Card", "props": { "title": "Get in touch." }, "children": ["subtitle", "form"] },',
+  '    "form-card": { "type": "Card", "props": { "title": "Get in touch." }, "children": ["subtitle", "form", "sep", "faq"] },',
   '    "subtitle": { "type": "Text", "props": { "text": "Say hello, ask about the build, or talk shop. Replies within a business day.", "muted": true }, "children": [] },',
   '    "form": { "type": "Form", "props": { "name": "contact" }, "children": ["f-name", "f-email", "f-topic", "f-message", "f-send"] },',
   '    "f-name": { "type": "Input", "props": { "name": "name", "label": "Your name", "placeholder": "Jane Doe", "kind": "text" }, "children": [] },',
   '    "f-email": { "type": "Input", "props": { "name": "email", "label": "Your email", "placeholder": "jane@example.com", "kind": "email" }, "children": [] },',
   '    "f-topic": { "type": "Select", "props": { "name": "topic", "label": "What\'s this about?", "options": [{"value":"Say hello","label":"Say hello"},{"value":"Question about the build","label":"Question about the build"},{"value":"Work together","label":"Work together"},{"value":"Other","label":"Other"}] }, "children": [] },',
   '    "f-message": { "type": "Textarea", "props": { "name": "message", "label": "Your message", "placeholder": "e.g. How does the engine decide what to render?", "rows": 3 }, "children": [] },',
-  '    "f-send": { "type": "Button", "props": { "label": "Send", "variant": "primary" }, "on": { "press": { "action": "submitForm", "params": { "formName": "contact" } } }, "children": [] }',
+  '    "f-send": { "type": "Button", "props": { "label": "Send", "variant": "primary" }, "on": { "press": { "action": "submitForm", "params": { "formName": "contact" } } }, "children": [] },',
+  '    "sep": { "type": "Divider", "props": {}, "children": [] },',
+  '    "faq": { "type": "Accordion", "props": { "items": [{ "id": "next", "label": "What happens when you press Send", "children": ["faq-list"] }] }, "children": [] },',
+  '    "faq-list": { "type": "List", "props": { "items": [',
+  '      "Your message is emailed to Josh via Web3Forms, straight from your browser",',
+  '      "A confirmation card renders instantly, generated server-side rather than by the model",',
+  '      "The form locks after sending, and duplicate submits are ignored"',
+  '    ] }, "children": [] }',
   '  }',
   '}',
 ].join('\n');

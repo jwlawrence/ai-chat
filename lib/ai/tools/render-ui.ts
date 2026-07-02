@@ -68,7 +68,7 @@ const elementSchema = z
     visible: visibilityConditionSchema
       .optional()
       .describe(
-        'Optional visibility condition. Examples: true | false | { "$state": "/open" } | { "eq": ["/mode", "edit"] } | { "not": { "$state": "/hidden" } }.',
+        'Optional visibility condition. Examples: true | false | { "$state": "/open" } | { "$state": "/mode", "eq": "edit" } | { "$state": "/hidden", "not": true }.',
       ),
     on: z
       .record(z.string(), actionBindingSchema)
