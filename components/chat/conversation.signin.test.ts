@@ -1,6 +1,6 @@
 import { createStateStore } from '@json-render/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildEndpointHandlers } from './conversation';
+import { buildEndpointHandlers } from '@/lib/chat/card-handlers';
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },

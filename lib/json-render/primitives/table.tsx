@@ -47,7 +47,13 @@ export function Table({ columns, rows, caption }: TableProps) {
           // Rows are not reorderable and capped at 50; index key is safe here.
           <TableRow key={`row-${i}`}>
             {columns.map((c) => (
-              <TableCell key={c.key} className={ALIGN_CLASS[c.align ?? 'left']}>
+              // whitespace-normal overrides the ui TableCell's nowrap: model-
+              // authored tables routinely carry prose cells, and nowrap forces
+              // the whole table past the card edge instead of wrapping.
+              <TableCell
+                key={c.key}
+                className={`whitespace-normal align-top ${ALIGN_CLASS[c.align ?? 'left']}`}
+              >
                 {formatCell(r[c.key])}
               </TableCell>
             ))}

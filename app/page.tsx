@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { AUTHOR_LINKEDIN_URL, AUTHOR_NAME } from '@/lib/brand/site';
 
 // Social unfurlers (LinkedIn, Twitter/X, Slack, Discord, …) and search crawlers
 // don't run client JS and follow 3xx redirects inconsistently. Serve them a real
@@ -28,12 +29,12 @@ export default async function Home() {
         <p className="max-w-xl text-balance text-muted-foreground text-sm">
           A portfolio piece by{' '}
           <a
-            href="https://linkedin.com/in/joshlawrence"
+            href={AUTHOR_LINKEDIN_URL}
             target="_blank"
             rel="noreferrer"
             className="font-medium text-foreground underline underline-offset-2"
           >
-            Joshua Lawrence
+            {AUTHOR_NAME}
           </a>
           . The model dynamically answers with interactive components, not plain text.
         </p>

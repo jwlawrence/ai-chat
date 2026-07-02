@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { LOGO_DATA_URI } from '@/lib/brand/logo';
+import { AUTHOR_NAME, SITE_URL } from '@/lib/brand/site';
 
 export const alt = 'AI Chat, a chat that responds with interactive UI';
 export const size = { width: 1200, height: 630 };
@@ -74,9 +75,9 @@ export default function OpengraphImage() {
           justifyContent: 'space-between',
         }}
       >
-        <div style={{ display: 'flex', fontSize: 28, fontWeight: 600 }}>Joshua Lawrence</div>
+        <div style={{ display: 'flex', fontSize: 28, fontWeight: 600 }}>{AUTHOR_NAME}</div>
         <div style={{ display: 'flex', fontSize: 26, color: '#71717a' }}>
-          ai-chat-by-josh.vercel.app
+          {new URL(SITE_URL).host}
         </div>
       </div>
     </div>,

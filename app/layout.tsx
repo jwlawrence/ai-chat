@@ -3,36 +3,39 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
 import { Providers } from '@/components/providers';
+import {
+  AUTHOR_LINKEDIN_URL,
+  AUTHOR_NAME,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  SITE_URL,
+} from '@/lib/brand/site';
 import './globals.css';
-
-const SITE_URL = 'https://ai-chat-by-josh.vercel.app';
-const TITLE = 'AI Chat, a chat that responds with interactive UI';
-const DESCRIPTION =
-  'A portfolio piece by Joshua Lawrence. The model dynamically answers with interactive components, not plain text.';
 
 export const metadata: Metadata = {
   // metadataBase makes the file-convention OG/Twitter images (app/opengraph-image
   // and app/twitter-image) resolve to absolute URLs in the rendered <head>, which
   // social crawlers require.
   metadataBase: new URL(SITE_URL),
-  title: TITLE,
-  description: DESCRIPTION,
-  applicationName: 'AI Chat',
-  authors: [{ name: 'Joshua Lawrence', url: 'https://linkedin.com/in/joshlawrence' }],
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: AUTHOR_NAME, url: AUTHOR_LINKEDIN_URL }],
   alternates: { canonical: SITE_URL },
   // og:image / twitter:image are emitted automatically from the
   // app/opengraph-image.tsx and app/twitter-image.tsx route files.
   openGraph: {
     type: 'website',
     url: SITE_URL,
-    siteName: 'AI Chat',
-    title: TITLE,
-    description: DESCRIPTION,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
   twitter: {
     card: 'summary_large_image',
-    title: TITLE,
-    description: DESCRIPTION,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
 };
 

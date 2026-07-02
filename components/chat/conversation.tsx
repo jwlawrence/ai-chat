@@ -1,13 +1,11 @@
 'use client';
 
-import type { UseChatHelpers } from '@ai-sdk/react';
-import type { Spec, StateStore } from '@json-render/core';
+import type { Spec } from '@json-render/core';
 import { createStateStore } from '@json-render/core';
 import { JSONUIProvider, Renderer } from '@json-render/react';
 import type { UIMessage } from 'ai';
 import { Globe, MousePointerClick, Sparkles } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import {
   Conversation,
   ConversationContent,
@@ -16,416 +14,26 @@ import {
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message';
 import { Spinner } from '@/components/ui/spinner';
 import { specSchema } from '@/lib/ai/tools/render-ui';
+import { AUTHOR_LINKEDIN_URL, AUTHOR_NAME } from '@/lib/brand/site';
+import {
+  buildEndpointHandlers,
+  buildSubmitFormHandler,
+  type SendMessage,
+} from '@/lib/chat/card-handlers';
 import type { ChipPrompt } from '@/lib/chat/chips';
 import {
-  CONTACT_REQUIRED_FIELDS,
-  parseContactFormFields,
-  sendContactFormToEmail,
-  validateContactFields,
-} from '@/lib/contact/web3forms';
+  getPressData,
+  makePressPart,
+  messageHasPressChip,
+  messageHasRenderableContent,
+  messageHasRenderUI,
+  messageHasVisibleOutput,
+  stripSlashKeys,
+} from '@/lib/chat/press';
 import { ACTION_REGISTRY } from '@/lib/json-render/catalog';
 import { applyLockToSpec, registry, SpecRenderer } from '@/lib/json-render/registry';
 import { AnimatedCardShell } from './animated-card-shell';
 import { ChipDeck } from './chip-deck';
-
-type SendMessage = UseChatHelpers<UIMessage>['sendMessage'];
-
-/**
- * Returns true when a message has at least one tool-renderUI part in any state.
- * Previously required `state === 'output-available'`, but that caused a flicker
- * where a rendering message would briefly show its text parts while streaming.
- * Widening to any renderUI part state suppresses the text bubble for the full
- * duration of the tool call (Fix #2).
- */
-export function messageHasRenderUI(m: UIMessage): boolean {
-  return (m.parts ?? []).some((p) => p.type === 'tool-renderUI');
-}
-
-/**
- * Returns true when a message has at least one part that will produce a
- * visible element in the conversation render map. Mirrors the per-part render
- * decisions in `messages.map` so the enclosing `<Message>` bubble can be
- * skipped entirely when all parts would return null — preventing empty
- * right-aligned bubbles (e.g. a contact-form submit that has both a
- * `hideTranscriptChip` data-press and a companion text part suppressed by
- * `hasPressChip`).
- */
-export function messageHasRenderableContent(m: UIMessage): boolean {
-  const hasRenderUI = messageHasRenderUI(m);
-  const hasPressChip = messageHasPressChip(m);
-  return (m.parts ?? []).some((p) => {
-    if (p.type === 'text') return !(hasRenderUI || hasPressChip) && p.text.length > 0;
-    if (p.type === 'data-press') return !(p as { data?: PressData }).data?.hideTranscriptChip;
-    if (p.type === 'file') return p.mediaType?.startsWith('image/') ?? false;
-    if (p.type === 'tool-webSearch') return true;
-    if (p.type === 'tool-renderUI') return (p as { state?: string }).state === 'output-available';
-    return false;
-  });
-}
-
-/**
- * Returns true when a message has at least one part that produces visible output
- * on screen. Used by the spinner logic: the "Thinking..." indicator hides as soon
- * as visible content arrives.
- *
- * - Non-empty text parts are visible.
- * - File parts are visible.
- * - Tool parts are visible only when their result is available (output-available
- *   or output-error). input-streaming and input-available do not yet have output.
- */
-export function messageHasVisibleOutput(message: UIMessage): boolean {
-  return (message.parts ?? []).some((p) => {
-    if (p.type === 'text') return p.text.length > 0;
-    if (p.type === 'file') return true;
-    if (p.type.startsWith('tool-')) {
-      const state = (p as { state?: string }).state;
-      return state === 'output-available' || state === 'output-error';
-    }
-    return false;
-  });
-}
-
-/**
- * Strip leading slashes from state keys. Defensively normalises any persisted
- * specs that used JSON Pointer paths ("/open") as plain state keys before the
- * server-side Fix #11 landed. The runtime flattenToPointers call expects plain
- * keys and adds the "/" itself, so a double-slash would silently break state.
- */
-function stripSlashKeys(
-  s: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  if (!s) return undefined;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(s)) {
-    out[k.startsWith('/') ? k.slice(1) : k] = v;
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// data-press chip type
-// ---------------------------------------------------------------------------
-
-/**
- * Shape of the `data` payload in a `data-press` user message part.
- *
- * Slim format (Fix #13): only the fields actually needed are stored — `label`
- * for the chip UI, `message` and `data` for model context, `sourceRootId` for
- * reload-survivable lock recovery, and `mode` for Phase 4 readiness (endpoint
- * chips will set mode: 'endpoint' and must NOT trigger the lock logic).
- *
- * The `params` blob is intentionally absent: it contained both `label` and
- * `message` (redundant) plus `data` (now stored directly). Removing it keeps
- * the persisted part lean.
- *
- * This is a UI-only part — `convertToModelMessages` ignores `data-*` parts
- * by default (no `convertDataPart` option is passed in route.ts), so it
- * never reaches the model. The text part in the same message IS sent.
- */
-export interface PressData {
-  action: string;
-  label: string;
-  /** Optional extra context the model should see, in addition to the label. */
-  message?: string;
-  /** Optional structured payload echoed to the model as JSON. */
-  data?: Record<string, unknown>;
-  /**
-   * For submitForm presses: the form `name` prop. Lets the server identify
-   * specific form submissions (e.g. the contact form) without having to
-   * pattern-match the data payload.
-   */
-  formName?: string;
-  /**
-   * For submitForm presses on idempotent flows (contact form): a UUID
-   * stamped client-side on the first press. The server uses it to dedupe
-   * React StrictMode double-fires, double-clicks past the card-lock race,
-   * and retries on hung fetches.
-   */
-  submissionId?: string;
-  /**
-   * Hide the press from the visible transcript. The data-press part still
-   * lives on the user message (needed for server-side detection and
-   * persistence) — it just doesn't render a "You pressed: <label>" chip.
-   * Set by the dispatcher when the user-facing acknowledgement is already
-   * carried by a server-emitted card (e.g. the contact-form auto-reply).
-   */
-  hideTranscriptChip?: boolean;
-  /**
-   * Root id of the renderUI card that produced this press. Used on reload to
-   * pre-lock cards that were already used in earlier turns — the in-memory
-   * lock state resets across reloads, but the chip persists in the DB so we
-   * can recover the "this card has been pressed" signal from message history.
-   */
-  sourceRootId?: string;
-  /**
-   * Dispatch mode of the action that produced this chip (Fix #12 / Phase 4).
-   *
-   * - `'model'`    — this chip locked the card; useMemo uses this to skip
-   *                  endpoint chips that must NOT trigger the lock.
-   * - `'endpoint'` — Phase 4: fires a backend call, card stays unlocked.
-   * - `'local'`    — theoretical; local presses don't produce chips today.
-   *
-   * Absent on legacy chips (pre-Fix #12 persisted data) — treated as unlocked
-   * for graceful degradation.
-   */
-  mode?: 'local' | 'model' | 'endpoint';
-}
-
-/**
- * Returns true when a user message has at least one `data-press` chip part.
- * Used to suppress the companion text part from the visible conversation UI
- * (the chip IS the visual; the text is model-facing only and should not
- * render a second visible bubble).
- */
-export function messageHasPressChip(m: UIMessage): boolean {
-  return (m.parts ?? []).some((p) => p.type === 'data-press');
-}
-
-// ---------------------------------------------------------------------------
-// Endpoint dispatcher factory — extracted for testability (I7)
-// ---------------------------------------------------------------------------
-
-/**
- * Build one async handler per endpoint-mode action.
- * Exported so unit tests can exercise it directly without mounting React.
- *
- * Supports two metadata fields from ACTION_REGISTRY:
- *  - `oneShot: true` — locks the card on press (mirrors sendToModel); rolls back on failure.
- *  - `responseEffect: 'navigate'` — reads `redirectTo` from the 2xx response body and
- *    calls navigate(url) after same-origin URL validation.
- */
-export function buildEndpointHandlers(opts: {
-  store: StateStore;
-  inFlightRef: { current: Map<string, symbol> };
-  actionNames: ReadonlySet<string>;
-  lockedRef?: { current: boolean };
-  setIsLocked?: (v: boolean) => void;
-  navigate?: (url: string) => void;
-}): Record<string, (params: Record<string, unknown>) => Promise<void>> {
-  const navigate = opts.navigate ?? ((url: string) => window.location.assign(url));
-  const { store, inFlightRef, actionNames } = opts;
-  const entries = [...actionNames].map((actionName) => {
-    const def = ACTION_REGISTRY.get(actionName);
-    const oneShot = def?.oneShot === true;
-    const responseEffect = def?.responseEffect;
-    return [
-      actionName,
-      async (params: Record<string, unknown>) => {
-        // oneShot guard — lock before fetch so double-click can't slip through.
-        if (oneShot) {
-          if (opts.lockedRef?.current) return;
-          if (opts.lockedRef) opts.lockedRef.current = true;
-          opts.setIsLocked?.(true);
-        }
-
-        const rollback = () => {
-          if (oneShot) {
-            if (opts.lockedRef) opts.lockedRef.current = false;
-            opts.setIsLocked?.(false);
-          }
-        };
-
-        const writeResponseTo =
-          typeof params._writeResponseTo === 'string' ? params._writeResponseTo : undefined;
-        const setPendingAt =
-          typeof params._setPendingAt === 'string' ? params._setPendingAt : undefined;
-
-        const postParams = Object.fromEntries(
-          Object.entries(params).filter(([k]) => k !== '_writeResponseTo' && k !== '_setPendingAt'),
-        );
-
-        const key = writeResponseTo ?? actionName;
-        const token = Symbol();
-        inFlightRef.current.set(key, token);
-        const isLatest = () => inFlightRef.current.get(key) === token;
-
-        if (setPendingAt) {
-          store.set(setPendingAt, true);
-        }
-
-        try {
-          const res = await fetch(`/api/actions/${actionName}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(postParams),
-          });
-          if (!res.ok) {
-            if (isLatest()) toast.error(`Action "${actionName}" failed (${res.status})`);
-            rollback();
-            return;
-          }
-          if (responseEffect === 'navigate') {
-            const body = (await res.json().catch(() => null)) as { redirectTo?: string } | null;
-            if (!body?.redirectTo || typeof body.redirectTo !== 'string') {
-              toast.error(`Action "${actionName}" failed (no redirect URL)`);
-              rollback();
-              return;
-            }
-            if (!body.redirectTo.startsWith('/') || body.redirectTo.startsWith('//')) {
-              toast.error(`Action "${actionName}" failed (unexpected redirect)`);
-              rollback();
-              return;
-            }
-            navigate(body.redirectTo);
-            // No rollback — page is navigating away.
-            return;
-          }
-          // Default endpoint dispatch: write response body to state if requested.
-          if (writeResponseTo) {
-            let body: unknown;
-            try {
-              body = await res.json();
-            } catch {
-              if (isLatest()) {
-                toast.error(`Action "${actionName}" returned an invalid response`);
-              }
-              rollback();
-              return;
-            }
-            if (isLatest()) store.set(writeResponseTo, body);
-          }
-        } catch (err) {
-          if (isLatest()) toast.error(`Action "${actionName}" could not be reached`);
-          console.error('[RenderUICard] endpoint action failed', actionName, err);
-          rollback();
-        } finally {
-          if (setPendingAt && isLatest()) {
-            store.set(setPendingAt, false);
-          }
-        }
-      },
-    ];
-  });
-  return Object.fromEntries(entries);
-}
-
-/**
- * Build the submitForm handler with mutable lock refs injected.
- * Exported so unit tests can exercise lock/rollback behaviour without React.
- */
-export function buildSubmitFormHandler(opts: {
-  store: StateStore;
-  lockedRef: { current: boolean };
-  setIsLocked: (v: boolean) => void;
-  sendMessage: SendMessage;
-  specRoot: string;
-}): (params: Record<string, unknown>) => Promise<void> {
-  const { store, lockedRef, setIsLocked, sendMessage, specRoot } = opts;
-  return async (params: Record<string, unknown>) => {
-    // Re-entry guard — must stay at the very top.
-    if (lockedRef.current) return;
-
-    const formName = String(params.formName ?? '');
-    if (!formName) return;
-
-    const formData = (store.get(`/${formName}`) as Record<string, unknown> | undefined) ?? {};
-
-    // Contact form: run client-side validation BEFORE acquiring the lock or
-    // sending anything. Errors are written to /_errors/contact/<field> so
-    // field components can display them inline without touching the form data
-    // itself. If any field is invalid, return early — the card stays editable.
-    if (formName === 'contact') {
-      const errors = validateContactFields(formData);
-      for (const field of CONTACT_REQUIRED_FIELDS) {
-        store.set(`/_errors/contact/${field}`, errors[field] ?? undefined);
-      }
-      if (Object.keys(errors).length > 0) return;
-    }
-
-    // All validation passed (or non-contact form) — acquire lock and proceed.
-    lockedRef.current = true;
-    setIsLocked(true);
-
-    const label = String(params.label ?? `Submitted ${formName}`);
-    const message = typeof params.message === 'string' ? params.message : undefined;
-    const modelText = [
-      `[Submitted form ${formName}: ${JSON.stringify(formData)}`,
-      message ? ` — ${message}` : '',
-      ']',
-    ].join('');
-    // Generate per-press idempotency key for the contact flow. Other forms
-    // don't need it today; the server only consults submissionId when it
-    // also detects formName === 'contact'.
-    const submissionId =
-      formName === 'contact'
-        ? typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`
-        : undefined;
-
-    // For the contact form, fire the Web3Forms POST from the browser in
-    // parallel with the server submit. Web3Forms sits behind Cloudflare's
-    // managed bot challenge, which silently 403s server-side fetches but
-    // passes through normal browser sessions. The access key is exposed via
-    // NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY — Web3Forms keys are public by design
-    // (the value identifies a destination, not the sender, and is visible on
-    // any documented HTML form pattern). Failures only land in the console;
-    // the deterministic auto-reply card still renders from the server so the
-    // visitor sees a clean acknowledgement either way.
-    if (formName === 'contact') {
-      const submission = parseContactFormFields(formData);
-      if (submission) {
-        void sendContactFormToEmail(submission, {
-          accessKey: process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY ?? '',
-        })
-          .then((r) => {
-            if (!r.ok) {
-              // Surface to the visitor instead of failing silently behind
-              // the "Thanks, …" card — a confident-but-undelivered contact
-              // form is the worst possible UX. Toast carries a direct
-              // mailto: fallback so the visitor isn't stranded.
-              console.error('[contact] Web3Forms client send failed', r);
-              toast.warning('Email delivery failed', {
-                description:
-                  'The form submission did not reach Josh. Please email jlawrence@linkedin.com directly.',
-                duration: 10000,
-              });
-            }
-          })
-          .catch((err) => {
-            console.error('[contact] Web3Forms client send threw', err);
-            toast.warning('Email delivery failed', {
-              description:
-                'The form submission did not reach Josh. Please email jlawrence@linkedin.com directly.',
-              duration: 10000,
-            });
-          });
-      } else {
-        console.error('[contact] form data failed validation before send', formData);
-      }
-    }
-
-    try {
-      await sendMessage({
-        role: 'user',
-        parts: [
-          {
-            type: 'data-press',
-            data: {
-              action: 'submitForm',
-              label,
-              message,
-              data: formData,
-              sourceRootId: specRoot,
-              mode: 'model',
-              formName,
-              ...(submissionId ? { submissionId } : {}),
-              // Contact form has its own server-emitted auto-reply card; the
-              // "You pressed: Submitted contact" transcript chip would read
-              // like a duplicate message. Other forms keep the default chip.
-              ...(formName === 'contact' ? { hideTranscriptChip: true } : {}),
-            } satisfies PressData,
-          } as unknown as UIMessage['parts'][number],
-          { type: 'text', text: modelText },
-        ],
-      });
-    } catch (err) {
-      lockedRef.current = false;
-      setIsLocked(false);
-      console.error('[RenderUICard] submitForm failed', err);
-    }
-  };
-}
 
 // ---------------------------------------------------------------------------
 // RenderUIPart — per-message-part wrapper that parses the tool output once
@@ -578,9 +186,7 @@ function RenderUICard({
         try {
           // Chip part is rendered in the transcript; text part is what the
           // model sees (convertToModelMessages skips data-* parts when no
-          // convertDataPart is supplied). The AI SDK's UIMessagePart type
-          // only includes data-* in the generic UIDataTypes — for our
-          // untyped UIMessage we cast at the boundary.
+          // convertDataPart is supplied).
           //
           // Fix #13: Store only the slim fields needed — label (chip UI),
           // message and data (model context), sourceRootId (lock recovery),
@@ -588,17 +194,14 @@ function RenderUICard({
           await sendMessage({
             role: 'user',
             parts: [
-              {
-                type: 'data-press',
-                data: {
-                  action: 'sendToModel',
-                  label,
-                  message,
-                  data,
-                  sourceRootId: spec.root,
-                  mode: 'model',
-                } satisfies PressData,
-              } as unknown as UIMessage['parts'][number],
+              makePressPart({
+                action: 'sendToModel',
+                label,
+                message,
+                data,
+                sourceRootId: spec.root,
+                mode: 'model',
+              }),
               { type: 'text', text: modelText },
             ],
           });
@@ -660,12 +263,12 @@ function EmptyState({
           <p className="max-w-md text-muted-foreground text-xs">
             A portfolio piece by{' '}
             <a
-              href="https://linkedin.com/in/joshlawrence"
+              href={AUTHOR_LINKEDIN_URL}
               target="_blank"
               rel="noreferrer"
               className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
             >
-              Joshua Lawrence
+              {AUTHOR_NAME}
             </a>
             .
           </p>
@@ -709,8 +312,7 @@ export function ChatConversation({
     const s = new Set<string>();
     for (const m of messages) {
       for (const p of m.parts ?? []) {
-        if (p.type !== 'data-press') continue;
-        const chipData = (p as { data?: PressData }).data;
+        const chipData = getPressData(p);
         if (chipData?.sourceRootId && chipData.mode === 'model') {
           s.add(chipData.sourceRootId);
         }
@@ -757,7 +359,7 @@ export function ChatConversation({
                         return <MessageResponse key={key}>{p.text}</MessageResponse>;
                       }
                       if (p.type === 'data-press') {
-                        const data = (p as { data?: PressData }).data;
+                        const data = getPressData(p);
                         // Caller can mark a press as transcript-hidden when a
                         // server-emitted card already acknowledges it (e.g.
                         // the contact-form auto-reply). The data-press part
