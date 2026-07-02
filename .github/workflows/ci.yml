@@ -30,13 +30,21 @@ jobs:
       AZURE_FOUNDRY_GPT_URL: https://example-test.services.ai.azure.com/models
       TRUST_COOKIE_SECRET: test-trust-secret
       ANON_COOKIE_SECRET: test-anon-secret
+      # The committed .npmrc points at a private registry that GitHub runners
+      # cannot reach; resolve the same lockfile from the public registry
+      # instead. Job-wide so pnpm's self-installer is covered too.
+      npm_config_registry: https://registry.npmjs.org/
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          # Exact version + standalone binary: no registry lookup at all
+          # during setup (the private-registry .npmrc broke the default
+          # self-installer path).
+          version: 10.33.0
+          standalone: true
 
       - uses: actions/setup-node@v4
         with:
@@ -45,10 +53,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        env:
-          # The committed .npmrc points at a private registry; CI resolves the
-          # same lockfile from the public registry instead.
-          npm_config_registry: https://registry.npmjs.org/
 
       - name: Lint
         run: pnpm lint
