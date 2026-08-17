@@ -12,20 +12,18 @@
  */
 import { describe, expect, it } from 'vitest';
 import { renderUI } from '@/lib/ai/tools/render-ui';
+import { extractSpecShape, SPEC_SHAPE_MARKER } from './extract-spec';
 import { RICH_CHIP_PROMPTS } from './index';
 
 const execute = renderUI.execute as (spec: unknown) => Promise<unknown>;
 
-const MARKER = 'Spec shape:';
-
-function extractSpecShape(prompt: string): unknown {
-  const idx = prompt.lastIndexOf(MARKER);
-  expect(idx, `prompt must contain a "${MARKER}" marker`).toBeGreaterThan(-1);
-  const jsonBlock = prompt.slice(idx + MARKER.length).trim();
-  return JSON.parse(jsonBlock);
-}
-
 describe('rich-prompt spec shapes', () => {
+  it('every rich prompt ends with an extractable spec block', () => {
+    for (const [chipId, prompt] of Object.entries(RICH_CHIP_PROMPTS)) {
+      expect(prompt, `${chipId} must contain "${SPEC_SHAPE_MARKER}"`).toContain(SPEC_SHAPE_MARKER);
+    }
+  });
+
   for (const [chipId, prompt] of Object.entries(RICH_CHIP_PROMPTS)) {
     it(`${chipId}: embedded spec shape is valid JSON and passes the renderUI validator`, async () => {
       const spec = extractSpecShape(prompt);
@@ -52,10 +50,7 @@ describe('rich-prompt spec shapes', () => {
   it('composition: the demo button flips /pressed and the callout mirrors it', () => {
     const spec = extractSpecShape(RICH_CHIP_PROMPTS.composition) as {
       state?: Record<string, unknown>;
-      elements: Record<
-        string,
-        { type: string; on?: Record<string, unknown>; visible?: unknown }
-      >;
+      elements: Record<string, { type: string; on?: Record<string, unknown>; visible?: unknown }>;
     };
     expect(spec.state).toEqual({ cap: 'search', pressed: false });
     const button = Object.values(spec.elements).find((el) => el.type === 'Button');
@@ -71,6 +66,63 @@ describe('rich-prompt spec shapes', () => {
       (el) => el.type === 'Callout' && el.visible !== undefined,
     );
     expect(callout?.visible).toEqual({ $state: '/pressed' });
+  });
+
+  it('dashboard: the self-portrait numbers match the spec that draws them', () => {
+    // The hero states an element count and breaks it down by role, and both
+    // are counts OF THIS SPEC — so any element added or removed makes the card
+    // lie about itself. Recount from the spec rather than trusting the prose;
+    // this assertion already caught one off-by-one (a forgotten Callout).
+    const spec = extractSpecShape(RICH_CHIP_PROMPTS.dashboard) as {
+      elements: Record<string, { type: string; props: Record<string, unknown> }>;
+    };
+    const byRole = { Layout: 0, Data: 0, Content: 0, Nav: 0 };
+    const role: Record<string, keyof typeof byRole> = {
+      Grid: 'Layout',
+      GridCell: 'Layout',
+      Row: 'Layout',
+      KPI: 'Data',
+      Chart: 'Data',
+      Table: 'Data',
+      Card: 'Content',
+      Heading: 'Content',
+      Text: 'Content',
+      Callout: 'Content',
+      Tabs: 'Nav',
+    };
+    for (const el of Object.values(spec.elements)) {
+      const r = role[el.type];
+      expect(r, `unclassified primitive in the dashboard spec: ${el.type}`).toBeDefined();
+      byRole[r] += 1;
+    }
+    const total = Object.values(byRole).reduce((a, b) => a + b, 0);
+
+    const heading = Object.values(spec.elements).find((el) => el.type === 'Heading');
+    expect(heading?.props.text).toBe(`${total} elements`);
+
+    const chart = Object.values(spec.elements).find((el) => el.type === 'Chart');
+    expect(chart?.props.data).toEqual([
+      { role: 'Layout', count: byRole.Layout },
+      { role: 'Data', count: byRole.Data },
+      { role: 'Content', count: byRole.Content },
+      { role: 'Nav', count: byRole.Nav },
+    ]);
+  });
+
+  it('dashboard: every KPI value is a measurement, never a sentence', () => {
+    // The old dashboard put prose ("Self-correcting", "Secure by design") in
+    // the KPI value slot, which renders at 24px semibold — so nothing on the
+    // card read as a number and every tile carried identical weight.
+    const spec = extractSpecShape(RICH_CHIP_PROMPTS.dashboard) as {
+      elements: Record<string, { type: string; props: Record<string, unknown> }>;
+    };
+    const kpis = Object.values(spec.elements).filter((el) => el.type === 'KPI');
+    expect(kpis.length).toBeGreaterThan(0);
+    for (const kpi of kpis) {
+      const value = kpi.props.value as string;
+      expect(value, `KPI value "${value}" should not contain a space`).not.toMatch(/\s/);
+      expect(value, `KPI value "${value}" should carry a digit`).toMatch(/\d/);
+    }
   });
 
   it('interactive: the contact form block is untouched by the FAQ additions', () => {
