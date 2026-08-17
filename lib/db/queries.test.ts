@@ -44,7 +44,50 @@ vi.mock('@/lib/db/client', () => ({
 
 // Import AFTER the mocks are registered.
 import { eq, isNull } from 'drizzle-orm';
-import { appendMessages, listSessions } from './queries';
+import {
+  appendMessages,
+  deleteSession,
+  getMessages,
+  getSession,
+  isSessionId,
+  isUserOwnedSession,
+  listSessions,
+} from './queries';
+
+/** A real uuid: chat_sessions.id is a `uuid` column and the query layer now
+ *  short-circuits anything that isn't one. */
+const SESSION_ID = '3f1b9d0e-9a1c-4c7e-8f2a-6b5d4e3c2a10';
+
+describe('session id guard — non-UUID ids never reach Postgres', () => {
+  // chat_sessions.id is a `uuid` column: a non-UUID parameter aborts the query
+  // with 22P02 rather than matching zero rows, so /chat/<garbage> answered 500
+  // instead of 404. These ids come straight from user-controlled URLs.
+  beforeEach(() => {
+    selectMock.mockClear();
+    insertMock.mockClear();
+  });
+
+  it('recognises a real uuid and rejects the shapes URLs actually carry', () => {
+    expect(isSessionId('3f1b9d0e-9a1c-4c7e-8f2a-6b5d4e3c2a10')).toBe(true);
+    for (const bad of ['does-not-exist', '', '123', 'undefined', '../../etc/passwd']) {
+      expect(isSessionId(bad)).toBe(false);
+    }
+  });
+
+  it('short-circuits reads without issuing a query', async () => {
+    expect(await getSession('does-not-exist', null)).toBeNull();
+    expect(await isUserOwnedSession('does-not-exist')).toBe(false);
+    expect(await getMessages('does-not-exist', null)).toEqual([]);
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it('short-circuits writes without issuing a query', async () => {
+    await deleteSession('does-not-exist', null);
+    await appendMessages('does-not-exist', null, [{ role: 'user', parts: [] }]);
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('listSessions — userId filtering', () => {
   beforeEach(() => {
@@ -78,9 +121,9 @@ describe('appendMessages — Fix #13: distinct createdAt per row', () => {
     // Ownership gate: make the select mock return a matching session row.
     whereMock.mockReturnValueOnce({
       orderBy: orderByMock,
-      limit: vi.fn().mockResolvedValue([{ id: 'session-abc' }]),
+      limit: vi.fn().mockResolvedValue([{ id: SESSION_ID }]),
     });
-    await appendMessages('session-abc', null, [
+    await appendMessages(SESSION_ID, null, [
       { role: 'user', parts: [{ type: 'text', text: 'hello' }] },
       { role: 'assistant', parts: [{ type: 'text', text: 'world' }] },
     ]);
@@ -103,7 +146,7 @@ describe('appendMessages — Fix #13: distinct createdAt per row', () => {
     valuesMock.mockClear();
     insertMock.mockClear();
 
-    await appendMessages('session-abc', null, []);
+    await appendMessages(SESSION_ID, null, []);
 
     // db.insert should not have been called at all.
     expect(insertMock).not.toHaveBeenCalled();
@@ -117,9 +160,9 @@ describe('appendMessages — Fix #13: distinct createdAt per row', () => {
     // Ownership gate: make the select mock return a matching session row.
     whereMock.mockReturnValueOnce({
       orderBy: orderByMock,
-      limit: vi.fn().mockResolvedValue([{ id: 'session-single' }]),
+      limit: vi.fn().mockResolvedValue([{ id: SESSION_ID }]),
     });
-    await appendMessages('session-single', null, [
+    await appendMessages(SESSION_ID, null, [
       { role: 'user', parts: [{ type: 'text', text: 'only one' }] },
     ]);
 

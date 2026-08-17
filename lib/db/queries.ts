@@ -19,7 +19,24 @@ export async function listSessions(userId: string | null): Promise<Session[]> {
 // for a pre-signin visitor) will need `anonymousId` ORed into the WHERE
 // clause. `claimAnonymousSessions` already handles the transition mutation;
 // the reads are the remaining work.
+/**
+ * `chat_sessions.id` is a Postgres `uuid` column, so handing it a string that
+ * isn't a UUID doesn't return zero rows — it aborts the query with
+ * `22P02 invalid input syntax for type uuid`. Since session ids arrive from
+ * user-controlled URLs (`/chat/<id>`) and request bodies, an unfiltered id
+ * turned a mistyped or stale link into a 500 instead of a 404.
+ *
+ * Guarding here rather than at each call site keeps every reader and mutator
+ * below safe by construction.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isSessionId(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 export async function getSession(id: string, userId: string | null): Promise<Session | null> {
+  if (!isSessionId(id)) return null;
   const rows = await db
     .select()
     .from(chatSessions)
@@ -40,6 +57,7 @@ export async function getSession(id: string, userId: string | null): Promise<Ses
  * (→ 404). No ownership gate — intentionally queries by id only.
  */
 export async function isUserOwnedSession(id: string): Promise<boolean> {
+  if (!isSessionId(id)) return false;
   const rows = await db
     .select({ id: chatSessions.id })
     .from(chatSessions)
@@ -69,6 +87,7 @@ export async function renameSession(
   title: string,
   userId: string | null,
 ): Promise<void> {
+  if (!isSessionId(id)) return;
   await db
     .update(chatSessions)
     .set({ title, updatedAt: new Date() })
@@ -81,6 +100,7 @@ export async function renameSession(
 }
 
 export async function touchSession(id: string, userId: string | null): Promise<void> {
+  if (!isSessionId(id)) return;
   await db
     .update(chatSessions)
     .set({ updatedAt: new Date() })
@@ -97,6 +117,7 @@ export async function addUsageToSession(
   userId: string | null,
   usage: { tokensIn: number; tokensOut: number; tokensCached: number },
 ): Promise<void> {
+  if (!isSessionId(id)) return;
   await db
     .update(chatSessions)
     .set({
@@ -114,6 +135,7 @@ export async function addUsageToSession(
 }
 
 export async function deleteSession(id: string, userId: string | null): Promise<void> {
+  if (!isSessionId(id)) return;
   await db
     .delete(chatSessions)
     .where(
@@ -125,6 +147,7 @@ export async function deleteSession(id: string, userId: string | null): Promise<
 }
 
 export async function getMessages(sessionId: string, userId: string | null): Promise<UIMessage[]> {
+  if (!isSessionId(sessionId)) return [];
   const owner = await db
     .select({ id: chatSessions.id })
     .from(chatSessions)
@@ -153,7 +176,7 @@ export async function appendMessages(
   userId: string | null,
   toInsert: Array<Pick<UIMessage, 'role' | 'parts'>>,
 ): Promise<void> {
-  if (toInsert.length === 0) return;
+  if (toInsert.length === 0 || !isSessionId(sessionId)) return;
   const owner = await db
     .select({ id: chatSessions.id })
     .from(chatSessions)
@@ -181,6 +204,7 @@ export async function appendMessages(
 }
 
 export async function countMessages(sessionId: string, userId: string | null): Promise<number> {
+  if (!isSessionId(sessionId)) return 0;
   const owner = await db
     .select({ id: chatSessions.id })
     .from(chatSessions)
@@ -224,7 +248,7 @@ export async function trimTrailingMessages(
   userId: string | null,
   n: number,
 ): Promise<void> {
-  if (n <= 0) return;
+  if (n <= 0 || !isSessionId(sessionId)) return;
   const owner = await db
     .select({ id: chatSessions.id })
     .from(chatSessions)
