@@ -8,7 +8,7 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { isModelId, type ModelId } from '@/lib/ai/models';
-import { getModel, type ProviderOverride } from '@/lib/ai/providers';
+import { getModel, type ProviderOverride, STATELESS_PROVIDER_OPTIONS } from '@/lib/ai/providers';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { generateTitle } from '@/lib/ai/title';
 import { hasRenderUIResult, renderUI } from '@/lib/ai/tools/render-ui';
@@ -366,6 +366,11 @@ export async function POST(req: Request) {
         model: modelInstance,
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
+        // Required, not optional: without it the Responses provider replays
+        // prior turns as `item_reference` pointers into server-side storage
+        // Azure does not keep, and every turn after the first 400s. See the
+        // constant's doc comment for the full mechanism.
+        providerOptions: STATELESS_PROVIDER_OPTIONS,
         tools,
         // Tool gating across step chain:
         //   - "Rendered" = a renderUI tool call that produced an OUTPUT, not just
@@ -388,7 +393,9 @@ export async function POST(req: Request) {
         },
         // Allow the model to call a tool, see results, then respond — capped to keep runaway loops bounded.
         stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
-        maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS_PER_TURN ?? DEFAULT_MAX_OUTPUT_TOKENS),
+        maxOutputTokens: Number(
+          process.env.MAX_OUTPUT_TOKENS_PER_TURN ?? DEFAULT_MAX_OUTPUT_TOKENS,
+        ),
         abortSignal: req.signal,
         // Persist usage BEFORE the stream closes so the client's SWR mutate() in useChat's
         // onFinish picks up fresh totals.
