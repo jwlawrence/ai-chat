@@ -4,6 +4,16 @@ Single-user Next.js chat against an Azure AI Foundry deployment (GPT-5.3+) with 
 
 ## Setup
 
+Prerequisites: **Node 22.13.1** (pinned in `.nvmrc`; floor enforced by `engines`) and
+**pnpm 10**. Nothing switches Node for you, so select it explicitly per shell:
+
+```bash
+nvm use                 # reads .nvmrc; `nvm install` first if you don't have it
+npm install -g pnpm@10  # once per machine
+```
+
+Then:
+
 ```bash
 pnpm install
 cp .env.example .env.local
@@ -12,6 +22,10 @@ pnpm db:generate
 pnpm db:migrate
 pnpm dev
 ```
+
+On an Apple Silicon Mac, confirm `node -p process.arch` reports `arm64`. An x64 build
+running under Rosetta fails to load native bindings — Vitest cannot find its rolldown
+binary and Storybook refuses to start.
 
 ## Env vars
 
