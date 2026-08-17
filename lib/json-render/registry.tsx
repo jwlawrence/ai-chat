@@ -305,10 +305,15 @@ const buttonVariantMap: Record<CatalogButtonVariant, ShadcnButtonVariant> = {
 type CatalogBadgeTone = 'default' | 'success' | 'warning' | 'danger';
 type ShadcnBadgeVariant = 'default' | 'secondary' | 'outline' | 'destructive';
 
+// Badges are metadata, and DESIGN.md reserves the accent for the one thing on
+// screen that matters — so the DEFAULT tone must be the quietest pill, not a
+// filled accent. Previously `default` was an accent fill and `success` was
+// grey, which both inverted the semantics (a plain tag shouted, a positive one
+// whispered) and put three solid blue pills in a single metadata row.
 const badgeToneMap: Record<CatalogBadgeTone, ShadcnBadgeVariant> = {
-  default: 'default',
-  success: 'secondary',
-  warning: 'outline',
+  default: 'outline',
+  success: 'default',
+  warning: 'secondary',
   danger: 'destructive',
 };
 
@@ -418,7 +423,7 @@ export const { registry } = defineRegistry(catalog, {
         href={props.href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary underline underline-offset-4 hover:opacity-80"
+        className="text-primary-text underline underline-offset-4 hover:opacity-80"
       >
         {ds(props.text)}
       </a>
@@ -727,8 +732,15 @@ export const { registry } = defineRegistry(catalog, {
               </TabsTrigger>
             ))}
           </TabsList>
+          {/*
+            TabsContent is `flex-1 text-sm` with no layout of its own, so panel
+            children stacked flush against each other and against the tab strip
+            — a heading, a badge row, and a paragraph all touching. Give the
+            panel the same column rhythm CardContent uses (gap-3) plus room
+            below the triggers.
+          */}
           {props.tabs.map((tab) => (
-            <TabsContent key={tab.id} value={tab.id}>
+            <TabsContent key={tab.id} value={tab.id} className="flex flex-col gap-3 pt-4">
               {ctx ? ctx.renderChildren(tab.children) : null}
             </TabsContent>
           ))}
@@ -745,7 +757,10 @@ export const { registry } = defineRegistry(catalog, {
           {props.items.map((item) => (
             <AccordionItem key={item.id} value={item.id}>
               <AccordionTrigger>{ds(item.label)}</AccordionTrigger>
-              <AccordionContent>{ctx ? ctx.renderChildren(item.children) : null}</AccordionContent>
+              {/* Same column rhythm as a tab panel — see the Tabs note above. */}
+              <AccordionContent className="flex flex-col gap-3">
+                {ctx ? ctx.renderChildren(item.children) : null}
+              </AccordionContent>
             </AccordionItem>
           ))}
         </UiAccordion>
@@ -766,7 +781,11 @@ export const { registry } = defineRegistry(catalog, {
 
     // ---- Badge --------------------------------------------------------------
     Badge: (({ props }) => {
-      const variant = props.tone ? badgeToneMap[props.tone] : 'default';
+      // Route the absent tone through the map too. Short-circuiting to
+      // 'default' meant an untoned Badge skipped the mapping entirely and
+      // always rendered as an accent fill — which is how a row of three plain
+      // tags ended up as three solid accent pills.
+      const variant = badgeToneMap[props.tone ?? 'default'];
       return <UiBadge variant={variant}>{ds(props.label)}</UiBadge>;
     }) satisfies ComponentFn<typeof catalog, 'Badge'>,
 
@@ -793,11 +812,17 @@ export const { registry } = defineRegistry(catalog, {
 
     // ---- Row ----------------------------------------------------------------
     // Row is a horizontal flex layout. The renderer hands us `children` as a
-    // ReactNode (an array of pre-rendered child elements). We wrap each child
-    // in its own `flex-1 min-w-0` div so siblings share the row width evenly
-    // and nested charts/tables don't overflow their slot.
+    // ReactNode (an array of pre-rendered child elements).
+    //
+    // Only `fill` rows wrap each child in `flex-1 min-w-0` — that makes KPIs,
+    // Charts, and Tables share the width evenly without letting nested content
+    // overflow its slot. Applying it unconditionally is what stranded each
+    // Badge alone in its own third of the card: a pill is intrinsically narrow,
+    // so an equal slot is all empty space. Unfilled rows pass children through
+    // untouched and let the Row wrap them.
     Row: (({ props, children }) => {
       const rowProps = props as Parameters<typeof Row>[0];
+      if (!rowProps.fill) return <Row {...rowProps}>{children}</Row>;
       const wrapped = React.Children.map(children, (child, i) =>
         child == null || child === false ? null : (
           <div key={i} className="flex-1 min-w-0">
@@ -828,7 +853,6 @@ export const { registry } = defineRegistry(catalog, {
         {children}
       </div>
     )) satisfies ComponentFn<typeof catalog, 'GridCell'>,
-
   },
 });
 

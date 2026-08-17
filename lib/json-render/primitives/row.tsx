@@ -26,14 +26,27 @@ interface RowComponentProps extends RowProps {
 /**
  * Row — horizontal flex layout primitive.
  *
- * Children render in equal-width flex slots. The component itself just
- * provides the flex container; the registry wires individual children with
- * `flex-1 min-w-0` wrappers so they share the row width evenly without
- * letting nested charts/tables overflow.
+ * Two modes, because the two things a Row holds want opposite behaviour:
+ *
+ * - `fill=false` (default): children keep their natural width and the row
+ *   wraps. Badges and buttons are intrinsically narrow, so stretching them
+ *   into equal slots left a pill marooned in each third of the card.
+ * - `fill=true`: the registry wraps each child in `flex-1 min-w-0` so KPIs,
+ *   Charts, and Tables share the width evenly and nested content cannot
+ *   overflow its slot.
  */
-export function Row({ gap = 'normal', align = 'stretch', children }: RowComponentProps) {
+export function Row({
+  gap = 'normal',
+  align = 'stretch',
+  fill = false,
+  children,
+}: RowComponentProps) {
   return (
-    <div data-slot="row" className={cn('flex w-full', GAP_CLASS[gap], ALIGN_CLASS[align])}>
+    <div
+      data-slot="row"
+      data-fill={fill ? 'true' : 'false'}
+      className={cn('flex w-full', !fill && 'flex-wrap', GAP_CLASS[gap], ALIGN_CLASS[align])}
+    >
       {children}
     </div>
   );
