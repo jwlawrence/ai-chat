@@ -1,12 +1,29 @@
 'use client';
 
-import { groupByBucket } from '@/lib/date-groups';
-import { useSessions } from '@/hooks/use-sessions';
+import { RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSessions } from '@/hooks/use-sessions';
+import { groupByBucket } from '@/lib/date-groups';
 import { SidebarItem } from './sidebar-item';
 
 export function SidebarList() {
-  const { data, isLoading } = useSessions();
+  const { data, error, isLoading, mutate } = useSessions();
+  // A failed fetch previously fell through to the empty state, so an outage
+  // read as "you have no chats" — a failure disguised as a normal state.
+  // `useSessions` sets `fallbackData: []`, so `data` is never undefined;
+  // the length check is what distinguishes "failed with nothing to show"
+  // from "revalidation failed but the previous list is still on screen".
+  if (error && (data?.length ?? 0) === 0) {
+    return (
+      <div className="flex flex-col items-start gap-2 px-3 py-6">
+        <p className="text-muted-foreground text-xs">Couldn't load your chats.</p>
+        <Button variant="outline" size="xs" onClick={() => mutate()}>
+          <RotateCcw className="mr-1.5 size-3" /> Try again
+        </Button>
+      </div>
+    );
+  }
   if (isLoading) {
     return (
       <div className="space-y-2 p-2">

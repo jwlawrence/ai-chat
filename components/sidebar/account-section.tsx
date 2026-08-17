@@ -27,11 +27,14 @@ export function AccountSection({ user }: Props) {
             <div className="truncate text-muted-foreground text-xs">{user.email}</div>
           ) : null}
         </div>
-        <Link href="/settings" className="block">
-          <Button variant="ghost" className="w-full justify-start">
-            <Settings className="mr-2 size-4" /> Settings
-          </Button>
-        </Link>
+        {/*
+          `render` rather than <Link><Button> — wrapping a button in an anchor
+          nests two interactive elements, which is invalid HTML and gives
+          screen readers two overlapping controls for one target.
+        */}
+        <Button render={<Link href="/settings" />} variant="ghost" className="w-full justify-start">
+          <Settings className="mr-2 size-4" /> Settings
+        </Button>
         <form action={signOutAction} className="mt-1">
           <Button type="submit" variant="outline" className="w-full justify-start">
             <LogOut className="mr-2 size-4" /> Sign out
@@ -42,11 +45,13 @@ export function AccountSection({ user }: Props) {
   }
   return (
     <div className="border-t p-2">
-      <Link href="/api/auth/signin">
-        <Button variant="outline" className="w-full justify-start">
-          <LogIn className="mr-2 size-4" /> Sign in
-        </Button>
-      </Link>
+      <Button
+        render={<Link href="/api/auth/signin" />}
+        variant="outline"
+        className="w-full justify-start"
+      >
+        <LogIn className="mr-2 size-4" /> Sign in
+      </Button>
     </div>
   );
 }

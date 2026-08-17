@@ -266,7 +266,7 @@ function EmptyState({
               href={AUTHOR_LINKEDIN_URL}
               target="_blank"
               rel="noreferrer"
-              className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
+              className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary-text"
             >
               {AUTHOR_NAME}
             </a>

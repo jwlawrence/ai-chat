@@ -19,6 +19,14 @@ import {
 import { ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
 import type { ChartInput as ChartProps } from './chart-schema';
 
+// Recharts' own entrance animations are switched off on every series
+// (`isAnimationActive={false}`). Two reasons: a chart always mounts inside
+// AnimatedCardShell, whose GSAP cascade is the one authored entrance the
+// design system allows, so recharts' draw-on animation is a second motion
+// system competing inside it; and unlike the GSAP path it is not gated on
+// `prefers-reduced-motion`. Switching it off also makes charts deterministic
+// wherever requestAnimationFrame is throttled — background tabs, print,
+// screenshot tooling — where a frame-zero line renders as an empty plot.
 const FALLBACK_COLORS = [
   'var(--chart-1)',
   'var(--chart-2)',
@@ -103,7 +111,7 @@ function ChartBody(props: ChartProps) {
     }));
     return (
       <PieChart>
-        <Pie data={pieData} dataKey={first.key} nameKey={xKey} label />
+        <Pie data={pieData} dataKey={first.key} nameKey={xKey} label isAnimationActive={false} />
         <Tooltip content={<ChartTooltipContent />} />
         {legend && <Legend />}
       </PieChart>
@@ -157,6 +165,7 @@ function ChartBody(props: ChartProps) {
             name={s.label ?? s.key}
             stroke={s.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
             dot={false}
+            isAnimationActive={false}
           />
         ))}
       </LineChart>
@@ -174,6 +183,7 @@ function ChartBody(props: ChartProps) {
             dataKey={s.key}
             name={s.label ?? s.key}
             fill={s.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
+            isAnimationActive={false}
           />
         ))}
       </BarChart>
@@ -191,6 +201,7 @@ function ChartBody(props: ChartProps) {
           name={s.label ?? s.key}
           fill={s.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
           stroke={s.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]}
+          isAnimationActive={false}
         />
       ))}
     </AreaChart>
