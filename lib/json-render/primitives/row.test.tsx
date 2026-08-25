@@ -61,4 +61,29 @@ describe('Row renderer', () => {
     expect(wrapper).toHaveClass('gap-4');
     expect(wrapper).toHaveClass('items-stretch');
   });
+
+  // A Row of Badges used to stretch each pill into an equal slot, leaving one
+  // badge marooned per third of the card. Hugging + wrapping is now the
+  // default; equal columns are opt-in for KPI/Chart/Table rows.
+  it('hugs and wraps by default so small children keep their natural width', () => {
+    render(
+      <Row>
+        <span>child</span>
+      </Row>,
+    );
+    const wrapper = document.querySelector('[data-slot="row"]');
+    expect(wrapper).toHaveClass('flex-wrap');
+    expect(wrapper).toHaveAttribute('data-fill', 'false');
+  });
+
+  it('does not wrap when fill is set, so slots stay on one line', () => {
+    render(
+      <Row fill>
+        <span>child</span>
+      </Row>,
+    );
+    const wrapper = document.querySelector('[data-slot="row"]');
+    expect(wrapper).not.toHaveClass('flex-wrap');
+    expect(wrapper).toHaveAttribute('data-fill', 'true');
+  });
 });

@@ -9,6 +9,12 @@ export const rowPropsSchema = z.object({
     .enum(['start', 'center', 'end', 'stretch'])
     .default('stretch')
     .describe('Cross-axis alignment of children (items-*)'),
+  fill: z
+    .boolean()
+    .default(false)
+    .describe(
+      'false (default): children keep their natural width and wrap onto the next line, which is what badges, buttons, and other small items want. true: children share the row width in equal slots, for KPIs, Charts, or Tables that should line up as columns.',
+    ),
 });
 
 export type RowProps = z.infer<typeof rowPropsSchema>;

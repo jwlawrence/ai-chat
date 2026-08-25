@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MODEL_IDS, MODEL_LABELS, type ModelId } from '@/lib/ai/models';
+import { cn } from '@/lib/utils';
 
 export function ModelDropdown({
   value,
@@ -30,7 +31,7 @@ export function ModelDropdown({
       <DropdownMenuContent align="start">
         {MODEL_IDS.map((id) => (
           <DropdownMenuItem key={id} onClick={() => onChange(id)}>
-            <Check className={`mr-2 size-4 ${id === value ? '' : 'invisible'}`} />
+            <Check className={cn('mr-2 size-4', id !== value && 'invisible')} aria-hidden="true" />
             {MODEL_LABELS[id]}
           </DropdownMenuItem>
         ))}

@@ -46,6 +46,7 @@ html, body { height: 100%; }
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--primary-text);
   --color-primary: var(--primary);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
@@ -69,8 +70,21 @@ html, body { height: 100%; }
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.65 0.196 252); /* Bright Azure #1E90FF */
-  --primary-foreground: oklch(0.985 0 0);
+  /*
+   * Signal Blue — the one chromatic color in the chrome, identical in light
+   * and dark so the brand note never shifts between themes. Renders #0090ff.
+   * It is a BRIGHT blue, so its label is dark ink, not white: near-white on
+   * this fill measures 3.13:1 (fails WCAG AA for 14px text) while
+   * oklch(0.145 0 0) measures 6.06:1.
+   */
+  --primary: oklch(0.65 0.196 252);
+  --primary-foreground: oklch(0.145 0 0);
+  /*
+   * Signal Blue used as TEXT rather than as a fill (links, inline accents).
+   * The fill value is too light to read on a white page (3.27:1), so this
+   * role — and only this role — varies by theme. Light: 5.54:1 on page.
+   */
+  --primary-text: oklch(0.52 0.154 252);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -79,8 +93,15 @@ html, body { height: 100%; }
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.65 0.196 252); /* Bright Azure #1E90FF */
+  /*
+   * Form-control boundaries sit darker than the decorative hairline: at
+   * --border's 0.922 an input edge is 1.26:1 against the page and reads as
+   * absent. 0.8 lifts it to 1.87:1 while staying a hairline rather than a
+   * rule. Full 3:1 needs ~0.67, which would abandon the hairline language
+   * system-wide; the fill, label and focus ring carry state alongside it.
+   */
+  --input: oklch(0.8 0 0);
+  --ring: oklch(0.65 0.196 252);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -104,8 +125,12 @@ html, body { height: 100%; }
   --card-foreground: oklch(0.92 0 0);
   --popover: oklch(0.24 0 0);
   --popover-foreground: oklch(0.92 0 0);
-  --primary: oklch(0.65 0.196 252); /* Bright Azure #1E90FF */
-  --primary-foreground: oklch(0.985 0 0);
+  /* Signal Blue and its dark-ink label are theme-invariant — see :root. */
+  --primary: oklch(0.65 0.196 252);
+  --primary-foreground: oklch(0.145 0 0);
+  /* Blue-as-text is legible against the dark surfaces at the fill's own
+     lightness; lifted slightly for headroom on card (6.16:1). */
+  --primary-text: oklch(0.7 0.162 252);
   --secondary: oklch(0.265 0 0);
   --secondary-foreground: oklch(0.92 0 0);
   --muted: oklch(0.265 0 0);
@@ -115,7 +140,7 @@ html, body { height: 100%; }
   --destructive: oklch(0.68 0.18 22.216);
   --border: oklch(1 0 0 / 7%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.65 0.196 252); /* Bright Azure #1E90FF */
+  --ring: oklch(0.65 0.196 252);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);

@@ -15,7 +15,11 @@ export function ThemeToggle() {
     <Button
       variant="ghost"
       size="icon"
-      aria-label="Toggle theme"
+      // Name the destination, not the mechanism: before mount the resolved
+      // theme is unknown, so stay generic rather than announce the wrong one.
+      aria-label={
+        mounted ? (isDark ? 'Switch to light theme' : 'Switch to dark theme') : 'Toggle theme'
+      }
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
     >
       {mounted ? (

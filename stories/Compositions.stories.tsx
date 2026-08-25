@@ -156,7 +156,7 @@ const dashboard: Spec = {
     },
     'kpi-row': {
       type: 'Row',
-      props: { gap: 'normal', align: 'stretch' },
+      props: { gap: 'normal', align: 'stretch', fill: true },
       children: ['mrr-kpi', 'users-kpi', 'uptime-kpi'],
     },
     'mrr-kpi': {

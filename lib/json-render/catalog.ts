@@ -252,7 +252,7 @@ export const catalog = defineCatalog(schema, {
     Row: {
       props: rowPropsSchema,
       description:
-        'A horizontal layout. Children render in equal-width flex slots. Use to compose KPIs, badges, or buttons side-by-side. Wrap in a Card for dashboard headers.',
+        'A horizontal layout. By default children keep their natural width and wrap, which is what a cluster of Badges or Buttons wants. Set fill=true to give children equal-width slots instead, for a row of KPIs, Charts, or Tables.',
     },
 
     Grid: {

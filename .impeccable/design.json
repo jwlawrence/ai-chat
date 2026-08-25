@@ -1,0 +1,395 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-17T00:00:00.000Z",
+  "title": "Design System: AI Chat",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "oklch(0.65 0.196 252)",
+        "note": "Identical in light and dark so the brand note never shifts between themes. Also bound to --ring. Carries a near-black label (--primary-foreground, 6.06:1); a near-white label on this fill measures 3.13:1 and fails AA. When blue is type rather than a fill, use --primary-text instead.",
+        "tonalRamp": [
+          "oklch(0.15 0.196 252)",
+          "oklch(0.26 0.196 252)",
+          "oklch(0.37 0.196 252)",
+          "oklch(0.48 0.196 252)",
+          "oklch(0.59 0.196 252)",
+          "oklch(0.70 0.196 252)",
+          "oklch(0.82 0.14 252)",
+          "oklch(0.95 0.06 252)"
+        ]
+      },
+      "primary-text": {
+        "role": "primary",
+        "displayName": "Signal Blue (text)",
+        "canonical": "oklch(0.52 0.154 252)",
+        "note": "Signal Blue used as type. The only role in the system that varies by theme: light oklch(0.52 0.154 252) = 5.54:1 on page; dark oklch(0.7 0.162 252) = 6.16:1 on card. Same hue as --primary, not a second accent.",
+        "tonalRamp": [
+          "oklch(0.15 0.154 252)",
+          "oklch(0.26 0.154 252)",
+          "oklch(0.37 0.154 252)",
+          "oklch(0.48 0.154 252)",
+          "oklch(0.59 0.154 252)",
+          "oklch(0.70 0.154 252)",
+          "oklch(0.82 0.12 252)",
+          "oklch(0.95 0.05 252)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(1 0 0)",
+        "note": "Dark mode is a layered grey, not black: sidebar 0.18 under background 0.205 under card 0.24.",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.37 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.59 0 0)",
+          "oklch(0.70 0 0)",
+          "oklch(0.82 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.145 0 0)",
+        "note": "Source of every translucent hairline via ring-foreground/10. Dark mode lifts to oklch(0.92 0 0).",
+        "tonalRamp": [
+          "oklch(0.145 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.37 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.59 0 0)",
+          "oklch(0.70 0 0)",
+          "oklch(0.82 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Whisper",
+        "canonical": "oklch(0.97 0 0)",
+        "note": "--muted, --secondary and --accent deliberately share this value. They are semantic aliases, not three greys; change them together.",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.37 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.59 0 0)",
+          "oklch(0.70 0 0)",
+          "oklch(0.82 0 0)",
+          "oklch(0.97 0 0)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Half-tone",
+        "canonical": "oklch(0.556 0 0)",
+        "note": "Secondary copy, chip blurbs, captions. Dark mode lifts to oklch(0.68 0 0).",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.37 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.556 0 0)",
+          "oklch(0.70 0 0)",
+          "oklch(0.82 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.922 0 0)",
+        "note": "Decorative boundaries only. Form-control edges use --input, one step darker (oklch(0.8 0 0)) so a field reads against a white page. Dark mode switches both to alpha-white: --border oklch(1 0 0 / 7%), --input oklch(1 0 0 / 10%), so hairlines stay even against every layer.",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.37 0 0)",
+          "oklch(0.48 0 0)",
+          "oklch(0.59 0 0)",
+          "oklch(0.70 0 0)",
+          "oklch(0.85 0 0)",
+          "oklch(0.922 0 0)"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Alarm",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "note": "Never a solid fill on actions — used as a 10% tint with destructive-colored text. Lightens to oklch(0.68 0.18 22.216) in dark mode. Also the usage-meter fill past 90% of cap.",
+        "tonalRamp": [
+          "oklch(0.15 0.245 27.325)",
+          "oklch(0.26 0.245 27.325)",
+          "oklch(0.37 0.245 27.325)",
+          "oklch(0.48 0.245 27.325)",
+          "oklch(0.577 0.245 27.325)",
+          "oklch(0.70 0.20 27.325)",
+          "oklch(0.82 0.14 27.325)",
+          "oklch(0.95 0.06 27.325)"
+        ]
+      },
+      "chart-1": {
+        "role": "tertiary",
+        "displayName": "Series 1",
+        "canonical": "oklch(0.646 0.222 41.116)",
+        "note": "Data-series only, consumed as bare var(--chart-1). The dark-mode ramp is re-authored entirely rather than lightness-shifted: oklch(0.488 0.243 264.376)."
+      },
+      "trend-up": {
+        "role": "tertiary",
+        "displayName": "Trend Up",
+        "canonical": "oklch(0.596 0.145 163.225)",
+        "note": "Tailwind emerald-600 (emerald-400 in dark) on KPI delta indicators. A semantic content color inside generated cards, not chrome — the one sanctioned exception to the One Signal Rule. Paired with rose-600/rose-400 for down and Half-tone for flat."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The empty-state headline only — the first sentence a cold visitor reads."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Heading level 1 inside generated cards. The largest type the model can emit."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles and Heading levels 2–4. Card titles use --font-heading at weight 500."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The system default: messages, card text, list items. Form labels take weight 500."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Chip blurbs, captions, meter readouts, helper and error text. Numeric readouts add tabular-nums."
+      },
+      "mono": {
+        "displayName": "Mono Eyebrow",
+        "purpose": "Reserved for the uppercase eyebrow on the crawler-facing root page. The only monospaced texture in the system."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card-ring",
+        "value": "0 0 0 1px oklch(0.145 0 0 / 0.1)",
+        "purpose": "The default boundary for every card surface (ring-1 ring-foreground/10). A ring, not a border, so it stays out of layout."
+      },
+      {
+        "name": "chip-hover-lift",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "The only hover shadow in the system. Chip cards raise it because they stand in for generated content; chrome never does."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)",
+        "purpose": "3px Signal Blue bloom on focus-visible, paired with border-color: var(--ring). Deliberately thicker than the platform default — a 1px outline disappears at 32px control height."
+      }
+    ],
+    "motion": [
+      {
+        "name": "card-entrance",
+        "value": "gsap.from({ opacity: 0, y: 12, duration: 0.4, ease: 'power2.out', clearProps: 'opacity,transform' })",
+        "purpose": "The generated card's container fade-and-rise. Uses from() so the resting DOM state is the visible one — if JS never runs, the card still shows."
+      },
+      {
+        "name": "card-stagger",
+        "value": "gsap.from(children, { opacity: 0, y: 8, duration: 0.35, ease: 'power2.out', delay: 0.08, stagger: { amount: 0.35 } })",
+        "purpose": "The card's content children cascade in behind the container. Targets the direct children of card-content, or of the root element for non-card specs."
+      },
+      {
+        "name": "reduced-motion-gate",
+        "value": "gsap.matchMedia().add('(prefers-reduced-motion: no-preference)', ...)",
+        "purpose": "Every entrance animation sits inside this gate. Non-negotiable for new motion."
+      },
+      {
+        "name": "state-transition",
+        "value": "150ms ease (transition-all / transition-colors)",
+        "purpose": "Default easing for hover, focus and disabled state changes on controls."
+      },
+      {
+        "name": "active-press",
+        "value": "translateY(1px)",
+        "purpose": "The tactile nudge on button :active. What makes 32px controls read as deliberate rather than cramped."
+      },
+      {
+        "name": "chart-entrance",
+        "value": "isAnimationActive={false} on every Recharts series",
+        "purpose": "Deliberately none. Recharts' draw-on animation would be a second entrance competing inside the GSAP cascade, it is not reduced-motion gated, and at frame zero a line renders as an empty plot wherever requestAnimationFrame is throttled."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "content-measure", "value": "768px" },
+      { "name": "sidebar-width", "value": "288px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "The default action. Signal Blue fill, 32px tall, 3px focus bloom, 1px active press.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Send</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 10px; font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 14px; font-weight: 500; line-height: 1.25rem; white-space: nowrap; cursor: pointer; outline: none; transition: all 150ms ease; } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent); } .ds-btn:disabled { opacity: 0.5; pointer-events: none; } .ds-btn-primary { background: var(--primary); color: var(--primary-foreground); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action and the sidebar's New chat control. Hairline border, hovers to Whisper.",
+      "html": "<button class=\"ds-btn ds-btn-outline\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>New chat</button>",
+      "css": ".ds-btn-outline { background: var(--background); color: var(--foreground); border-color: var(--border); } .ds-btn-outline:hover { background: var(--muted); color: var(--foreground); } .ds-btn-outline svg { flex-shrink: 0; pointer-events: none; }"
+    },
+    {
+      "name": "Ghost Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The workhorse for icon actions — sidebar triggers, row menus, stop. No fill until hover.",
+      "html": "<button class=\"ds-btn ds-btn-ghost ds-btn-icon\" aria-label=\"Open sidebar\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"4\" x2=\"20\" y1=\"6\" y2=\"6\"/><line x1=\"4\" x2=\"20\" y1=\"12\" y2=\"12\"/><line x1=\"4\" x2=\"20\" y1=\"18\" y2=\"18\"/></svg></button>",
+      "css": ".ds-btn-ghost { background: transparent; color: var(--foreground); } .ds-btn-ghost:hover { background: var(--muted); } .ds-btn-icon { width: 32px; padding: 0; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "32px field, transparent over a hairline. 16px text on mobile stepping to 14px at md to prevent iOS zoom-on-focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Send a message...\" />",
+      "css": ".ds-input { display: block; width: 100%; height: 32px; padding: 4px 10px; background: transparent; color: var(--foreground); border: 1px solid var(--input); border-radius: 10px; font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 16px; outline: none; transition: color 150ms ease, border-color 150ms ease, box-shadow 150ms ease; } @media (min-width: 768px) { .ds-input { font-size: 14px; } } .ds-input::placeholder { color: var(--muted-foreground); } .ds-input:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent); } .ds-input[aria-invalid=\"true\"] { border-color: var(--destructive); box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent); } .ds-input:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Starter Chip Card",
+      "kind": "chip",
+      "refersTo": "chip-card",
+      "description": "Signature. The anonymous visitor's entire input vocabulary — a 2x2 deck of icon cards. The only element that raises a hover shadow.",
+      "html": "<button class=\"ds-chip-card\"><span class=\"ds-chip-icon\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"/></svg></span><span class=\"ds-chip-body\"><span class=\"ds-chip-label\">Show a dashboard</span><span class=\"ds-chip-blurb\">How this app is built, at a glance.</span></span></button>",
+      "css": ".ds-chip-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; padding: 16px; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 14px; cursor: pointer; outline: none; transition: all 150ms ease; } .ds-chip-card:hover { border-color: color-mix(in oklab, var(--foreground) 20%, transparent); background: color-mix(in oklab, var(--accent) 40%, transparent); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); } .ds-chip-card:focus-visible { box-shadow: 0 0 0 2px var(--ring), 0 0 0 4px var(--background); } .ds-chip-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--muted); color: var(--muted-foreground); transition: color 150ms ease, background 150ms ease; } .ds-chip-card:hover .ds-chip-icon { background: color-mix(in oklab, var(--foreground) 5%, transparent); color: var(--foreground); } .ds-chip-body { display: flex; flex-direction: column; gap: 4px; } .ds-chip-label { font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 14px; font-weight: 500; color: var(--foreground); } .ds-chip-blurb { font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 12px; line-height: 1.625; color: var(--muted-foreground); }"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge-default",
+      "description": "20px pill for metadata inside generated cards. Four catalog tones map to four variants.",
+      "html": "<span class=\"ds-badge ds-badge-default\">Shipped</span> <span class=\"ds-badge ds-badge-outline\">Pending</span> <span class=\"ds-badge ds-badge-destructive\">Over cap</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 20px; padding: 2px 8px; border: 1px solid transparent; border-radius: 26px; font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 12px; font-weight: 500; line-height: 1rem; white-space: nowrap; } .ds-badge-default { background: var(--primary); color: var(--primary-foreground); } .ds-badge-outline { border-color: var(--border); color: var(--foreground); } .ds-badge-destructive { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Value-first metric tile from the json-render catalog. Value leads so numbers align across a row no matter how each label wraps; the delta is pushed to the bottom for vertical rhythm.",
+      "html": "<div class=\"ds-card ds-kpi\"><div class=\"ds-kpi-value\">$0.14</div><div class=\"ds-kpi-label\">Spent today</div><div class=\"ds-kpi-delta ds-kpi-delta-up\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/></svg>+8%</div></div>",
+      "css": ".ds-card { display: flex; flex-direction: column; overflow: hidden; background: var(--card); color: var(--card-foreground); border-radius: 14px; box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent); font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 14px; } .ds-kpi { gap: 4px; padding: 16px; height: 100%; } .ds-kpi-value { font-size: 24px; font-weight: 600; letter-spacing: -0.025em; } .ds-kpi-label { font-size: 14px; color: var(--muted-foreground); } .ds-kpi-delta { display: flex; align-items: center; gap: 4px; margin-top: auto; font-size: 12px; font-weight: 500; } .ds-kpi-delta-up { color: oklch(0.596 0.145 163.225); }"
+    },
+    {
+      "name": "Usage Meter",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature. A 4px track showing the daily budget as it is spent; the fill flips to Alarm past 90%. The only place in the chrome where a constraint is drawn rather than written.",
+      "html": "<div class=\"ds-meter\"><div class=\"ds-meter-track\"><div class=\"ds-meter-fill\" role=\"progressbar\" aria-valuenow=\"38\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-label=\"Daily usage limit\" style=\"width: 38%\"></div></div><span class=\"ds-meter-readout\">62% left</span></div>",
+      "css": ".ds-meter { display: flex; align-items: center; gap: 6px; font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 12px; color: var(--muted-foreground); } .ds-meter-track { width: 64px; height: 4px; overflow: hidden; border-radius: 26px; background: var(--muted); } .ds-meter-fill { height: 100%; background: var(--primary); transition: all 150ms ease; } .ds-meter-fill[data-warn=\"true\"] { background: var(--destructive); } .ds-meter-readout { font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "User Message Bubble",
+      "kind": "custom",
+      "refersTo": "message-bubble-user",
+      "description": "The user's turn: a right-aligned Whisper bubble capped at 95% width. The assistant's turn is bare text on the page — no bubble, no avatar.",
+      "html": "<div class=\"ds-msg-row\"><div class=\"ds-msg-user\">Plot some data in a graph.</div></div>",
+      "css": ".ds-msg-row { display: flex; width: 100%; justify-content: flex-end; } .ds-msg-user { max-width: 95%; padding: 12px 16px; background: var(--secondary); color: var(--foreground); border-radius: 10px; font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif); font-size: 14px; line-height: 1.25rem; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Stage",
+    "overview": "The interface is unlit stagecraft. Every chrome decision — the zero-chroma neutrals, the hairline rings, the 32px controls, the single accent used sparingly — exists to keep the eye off the frame and on the one thing that just appeared under the light: a card the model composed a moment ago. When a generated card fades and rises into the transcript, it should be the only event on screen.\n\nThe consequence is an inversion of the usual chat aesthetic. The shell does not compete; it does not brand itself in gradients or glass; it does not announce that an AI lives here. It is a well-built, compact, unremarkable room, and the remarkable thing is what gets rendered into it. Density is tight throughout — controls stand 32px tall, body copy sits at 14px, the sidebar is a fixed 288px column — because a stage that wastes space steals attention from the performance.\n\nThe voice is warm and approachable, but never playful. Warmth comes from plain-spoken copy, generous breathing room around the content column, and motion that has a pulse — not from oversized radii, mascots, bouncy easing, or emoji-led empty states. The corner-radius ceiling (10px base, 26px only for pills) and power2.out easing are the limit of softness in this system.",
+    "keyCharacteristics": [
+      "One chromatic accent — Signal Blue — on an otherwise neutral field",
+      "Flat chrome, hairline rings; depth reserved as a signal for generated content",
+      "Compact 32px control height with tactile feedback (3px focus ring, 1px active nudge)",
+      "A single centered 768px column for reading and input, at every breakpoint",
+      "Geist Sans and Geist Mono, no third family",
+      "One deliberate motion moment: the generated-card entrance, reduced-motion gated"
+    ],
+    "rules": [
+      {
+        "name": "The One Signal Rule",
+        "body": "Signal Blue is the only chromatic color permitted in the chrome. If a second hue seems necessary, the answer is a neutral at a different lightness or the existing destructive token — not a new accent. --primary-text is the same hue at a different lightness, not a second accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fill-Or-Text Rule",
+        "body": "Signal Blue as a fill is --primary and carries a dark label. Signal Blue as text is --primary-text. Using --primary as a text color is the one way to reintroduce the contrast failure this system was corrected for.",
+        "section": "colors"
+      },
+      {
+        "name": "The Chart Palette Is Not The Brand Rule",
+        "body": "--chart-1 … --chart-5 are data-series colors and appear only inside charts. They never fill a button, a badge, a border, or a background.",
+        "section": "colors"
+      },
+      {
+        "name": "The Neutrals Are Aliases Rule",
+        "body": "--muted, --secondary, and --accent intentionally resolve to one value. Change them together or change the semantics, never one in isolation.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Face Rule",
+        "body": "Geist Sans and Geist Mono. No third family, no serif, no display face. Hierarchy is carried by weight, size, and tracking.",
+        "section": "typography"
+      },
+      {
+        "name": "The Small-Body Rule",
+        "body": "Body copy is 14px. 16px and above belong to card titles and headings only; dropping body to 12px is reserved for the label tier, never for prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Single Measure Rule",
+        "body": "Every reading and input surface centers on the same 768px column. A new surface that introduces a second content width breaks the shell's spine.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-Chrome Rule",
+        "body": "Chrome is flat at rest. If a chrome element needs separation, it gets a hairline ring or a tonal step — never a drop shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Lift-Means-Generated Rule",
+        "body": "Elevation is a signal reserved for model-produced content and the surfaces that stand in for it. Do not spend it on navigation, toolbars, or dialogs.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Ramp-Only Rule",
+        "body": "Every corner value comes from the --radius ramp. A hard-coded border-radius is a defect, not a variation.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Pill Is For Metadata Rule",
+        "body": "Fully rounded shapes mark small, non-interactive status objects — badges, receipts, meters. Actions are 10px; surfaces are 14px.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do keep Signal Blue (oklch(0.65 0.196 252)) as the only chromatic color in the chrome, and keep the fill identical across light and dark.",
+      "Do reach for --primary-text whenever blue is type and --primary whenever blue is a surface, and check any new foreground/background pair against 4.5:1 before shipping it.",
+      "Do separate surfaces with a 1px foreground/10 ring or a tonal step, never a shadow.",
+      "Do pull every corner value from the --radius ramp (6 / 8 / 10 / 14 / 18 / 22 / 26px): 10px for controls, 14px for surfaces, 26px for pills.",
+      "Do hold controls to 32px with 14px labels, and give every interactive element the 3px ring-ring/50 focus bloom.",
+      "Do center every reading and input surface on the 768px column.",
+      "Do gate every entrance animation behind prefers-reduced-motion and author it with gsap.from() so the resting DOM state stays visible without JavaScript.",
+      "Do carry warmth through plain copy, breathing room, and live motion — and, when the approved warm-neutral shift lands, through a low-chroma warm hue applied to the whole neutral ramp at once.",
+      "Do reserve --chart-1 … --chart-5 for data series inside charts."
+    ],
+    "donts": [
+      "Don't introduce a second accent hue, a serif, or a third font family.",
+      "Don't put a white or near-white label on Signal Blue, and don't set body text in --primary; both are the 3.1:1 pairings this system was corrected away from.",
+      "Don't add drop shadows to chrome — navigation, toolbars, dialogs, or the composer.",
+      "Don't exceed the radius ramp or hard-code a border-radius; oversized rounding reads as the playful register this system rejects.",
+      "Don't use bouncy or elastic easing, mascots, or emoji-led empty states.",
+      "Don't fill a destructive action with solid red; use the 10% tint with destructive text.",
+      "Don't change --muted, --secondary, or --accent in isolation — they are aliases of one value.",
+      "Don't let chrome out-weigh a generated card. If a new surface competes with the card for attention, the surface is wrong."
+    ]
+  }
+}

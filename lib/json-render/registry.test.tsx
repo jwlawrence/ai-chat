@@ -202,6 +202,49 @@ describe('registry — simple primitives', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
+  // Badges are metadata and the accent is reserved for the one thing that
+  // matters, so an untoned Badge must be the quietest pill. The mapping used
+  // to be inverted: `default` was an accent fill and `success` was grey, which
+  // put three solid accent pills in a single row of tags.
+  it('maps the default Badge tone to the quiet outline variant, not the accent', () => {
+    renderSpec({
+      root: 'row',
+      elements: {
+        row: { type: 'Row', props: {}, children: ['plain', 'good'] },
+        plain: { type: 'Badge', props: { label: 'Plain' }, children: [] },
+        good: { type: 'Badge', props: { label: 'Good', tone: 'success' }, children: [] },
+      },
+    });
+    const plain = screen.getByText('Plain');
+    const good = screen.getByText('Good');
+    expect(plain).toHaveAttribute('data-variant', 'outline');
+    expect(good).toHaveAttribute('data-variant', 'default');
+  });
+
+  it('leaves unfilled Row children unwrapped so badges keep their width', () => {
+    renderSpec({
+      root: 'row',
+      elements: {
+        row: { type: 'Row', props: {}, children: ['b1'] },
+        b1: { type: 'Badge', props: { label: 'Tag' }, children: [] },
+      },
+    });
+    const row = document.querySelector('[data-slot="row"]');
+    expect(row?.querySelector(':scope > .flex-1')).toBeNull();
+  });
+
+  it('wraps filled Row children in equal-width slots', () => {
+    renderSpec({
+      root: 'row',
+      elements: {
+        row: { type: 'Row', props: { fill: true }, children: ['b1'] },
+        b1: { type: 'Badge', props: { label: 'Tag' }, children: [] },
+      },
+    });
+    const row = document.querySelector('[data-slot="row"]');
+    expect(row?.querySelector(':scope > .flex-1')).not.toBeNull();
+  });
+
   it('renders Callout with title and text', () => {
     renderSpec(simpleSpec);
     expect(screen.getByText('Heads up')).toBeInTheDocument();
@@ -832,7 +875,10 @@ describe('registry — Part C: field error display', () => {
         },
       },
     };
-    const store = createStateStore({ contact: { email: '' }, '_errors': { contact: { email: 'Enter a valid email' } } });
+    const store = createStateStore({
+      contact: { email: '' },
+      _errors: { contact: { email: 'Enter a valid email' } },
+    });
     render(
       <JSONUIProvider registry={registry} store={store}>
         <SpecRenderer spec={spec} registry={registry}>
@@ -861,7 +907,10 @@ describe('registry — Part C: field error display', () => {
         },
       },
     };
-    const store = createStateStore({ contact: { email: '' }, '_errors': { contact: { email: 'Enter a valid email' } } });
+    const store = createStateStore({
+      contact: { email: '' },
+      _errors: { contact: { email: 'Enter a valid email' } },
+    });
     render(
       <JSONUIProvider registry={registry} store={store}>
         <SpecRenderer spec={spec} registry={registry}>
@@ -903,7 +952,10 @@ describe('registry — Part C: field error display', () => {
         },
       },
     };
-    const store = createStateStore({ contact: { roleType: '' }, '_errors': { contact: { roleType: 'Select a role' } } });
+    const store = createStateStore({
+      contact: { roleType: '' },
+      _errors: { contact: { roleType: 'Select a role' } },
+    });
     render(
       <JSONUIProvider registry={registry} store={store}>
         <SpecRenderer spec={spec} registry={registry}>
