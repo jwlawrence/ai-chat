@@ -2,6 +2,7 @@ import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Toaster } from 'sonner';
+import { Analytics } from '@vercel/analytics/next';
 import { Providers } from '@/components/providers';
 import {
   AUTHOR_LINKEDIN_URL,
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <Toaster richColors closeButton />
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
