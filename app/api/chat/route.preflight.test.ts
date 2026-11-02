@@ -11,8 +11,7 @@ vi.mock('@/lib/budget/preflight', () => ({
   CAPS: { dailyGlobalUsd: 5, monthlyGlobalUsd: 30, anonymousDailyUsd: 0.2, userDailyUsd: 1 },
 }));
 
-// Mock providers because @/lib/ai/providers evaluates createAzure() at module
-// load time and requires AZURE_FOUNDRY_BASE_URL/API_KEY. These tests all exit
+// Mock providers so no AI_GATEWAY_API_KEY is needed. These tests all exit
 // before streamText runs, so getModel is never invoked. If a future test
 // exercises the allow path, replace this stub with a real model factory.
 vi.mock('@/lib/ai/providers', () => ({
