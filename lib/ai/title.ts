@@ -23,12 +23,10 @@ export async function generateTitle(
     .map((m) => `${m.role.toUpperCase()}: ${flattenText(m)}`)
     .join('\n\n');
 
-  // Use BYOK only when the title model is actually in the user's deployment
-  // map; otherwise fall back to env so a BYOK user whose record only has
-  // gpt-5.4-mini doesn't 500 when the title model is gpt-5.4 (full).
-  const titleOverride = override?.deployments[modelId] ? override : undefined;
+  // A BYOK user's Gateway key reaches every app model, so titles bill to
+  // their key whenever one is present.
   const { text } = await generateText({
-    model: getModel(modelId, titleOverride),
+    model: getModel(modelId, override),
     system: TITLE_INSTRUCTION,
     prompt: conversation,
   });

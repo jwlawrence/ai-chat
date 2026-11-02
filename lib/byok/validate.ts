@@ -1,12 +1,9 @@
-import { createAzure } from '@ai-sdk/azure';
 import { generateText } from 'ai';
-import { DEFAULT_AZURE_API_VERSION } from '@/lib/ai/providers';
+import { DEFAULT_MODEL } from '@/lib/ai/models';
+import { getModel } from '@/lib/ai/providers';
 
 export interface ValidateInput {
   key: string;
-  baseUrl: string;
-  deploymentName: string;
-  apiVersion?: string;
 }
 
 export type ValidateResult = { ok: true } | { ok: false; error: string };
@@ -19,19 +16,17 @@ function extractErrorMessage(err: unknown): string {
     if (typeof o.cause?.message === 'string' && o.cause.message) return o.cause.message;
     if (typeof o.status === 'number') return `HTTP ${o.status}`;
   }
-  return 'Azure rejected the credentials (no details)';
+  return 'AI Gateway rejected the credentials (no details)';
 }
 
+/**
+ * Prove a user's Gateway key works by making the smallest possible call on
+ * the default model through the same seam chat turns use.
+ */
 export async function validateByokCredentials(input: ValidateInput): Promise<ValidateResult> {
   try {
-    const azure = createAzure({
-      baseURL: input.baseUrl,
-      apiKey: input.key,
-      apiVersion: input.apiVersion ?? DEFAULT_AZURE_API_VERSION,
-    });
-    const model = azure.responses(input.deploymentName);
     await generateText({
-      model,
+      model: getModel(DEFAULT_MODEL, { apiKey: input.key }),
       prompt: 'Reply with the single word: ok',
       maxOutputTokens: 5,
     });

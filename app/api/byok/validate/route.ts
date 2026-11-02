@@ -5,10 +5,7 @@ import { validateByokCredentials } from '@/lib/byok/validate';
 export const runtime = 'nodejs';
 
 const Body = z.object({
-  key: z.string().min(1),
-  baseUrl: z.string().url(),
-  deploymentName: z.string().min(1),
-  apiVersion: z.string().min(1).optional(),
+  key: z.string().trim().min(1),
 });
 
 export async function POST(req: Request) {

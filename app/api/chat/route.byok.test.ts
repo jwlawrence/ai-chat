@@ -26,7 +26,7 @@ vi.mock('@/lib/db/queries', () => ({
 }));
 
 // Mock the ai streaming helpers to return a minimal 200 response so the
-// route can complete without a real Azure connection.
+// route can complete without a real gateway connection.
 vi.mock('ai', async (importOriginal) => {
   const real = await importOriginal<typeof import('ai')>();
   return {
@@ -66,9 +66,7 @@ import { BYOK_HEADERS } from '@/lib/byok/headers';
 import { POST } from './route';
 
 const VALID_BYOK_HEADERS = {
-  [BYOK_HEADERS.key]: 'sk-test',
-  [BYOK_HEADERS.baseUrl]: 'https://my.azure.com/openai',
-  [BYOK_HEADERS.deployments]: JSON.stringify({ 'gpt-5.4': 'my-gpt54' }),
+  [BYOK_HEADERS.key]: 'vck_test',
 };
 
 async function freshTrustCookie(): Promise<string> {
@@ -79,7 +77,7 @@ async function freshTrustCookie(): Promise<string> {
 }
 
 describe('chat route — BYOK header parsing', () => {
-  it('signed-in user with all 3 BYOK headers → getModel called with override', async () => {
+  it('signed-in user with the BYOK key header → getModel called with that key', async () => {
     const req = new Request('http://test/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...VALID_BYOK_HEADERS },
@@ -89,14 +87,7 @@ describe('chat route — BYOK header parsing', () => {
       }),
     });
     await POST(req);
-    expect(getModel).toHaveBeenCalledWith(
-      'gpt-5.4',
-      expect.objectContaining({
-        apiKey: 'sk-test',
-        baseUrl: 'https://my.azure.com/openai',
-        deployments: { 'gpt-5.4': 'my-gpt54' },
-      }),
-    );
+    expect(getModel).toHaveBeenCalledWith('gpt-5.4', { apiKey: 'vck_test' });
   });
 
   it('anonymous user with BYOK headers → BYOK ignored; getModel called without override', async () => {
@@ -125,11 +116,10 @@ describe('chat route — BYOK header parsing', () => {
     expect(getModel).toHaveBeenCalledWith('gpt-5.4', undefined);
   });
 
-  it('signed-in user with missing deployments header → BYOK ignored; getModel called without override', async () => {
-    const { [BYOK_HEADERS.deployments]: _removed, ...headersNoDeployments } = VALID_BYOK_HEADERS;
+  it('signed-in user with a blank BYOK key header → BYOK ignored; getModel called without override', async () => {
     const req = new Request('http://test/api/chat', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...headersNoDeployments },
+      headers: { 'content-type': 'application/json', [BYOK_HEADERS.key]: '   ' },
       body: JSON.stringify({
         model: 'gpt-5.4',
         messages: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
@@ -139,13 +129,13 @@ describe('chat route — BYOK header parsing', () => {
     expect(getModel).toHaveBeenCalledWith('gpt-5.4', undefined);
   });
 
-  it('signed-in user with malformed deployments JSON → BYOK ignored; getModel called without override', async () => {
+  it('signed-in user sending only Azure-era BYOK headers → BYOK ignored; getModel called without override', async () => {
     const req = new Request('http://test/api/chat', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...VALID_BYOK_HEADERS,
-        [BYOK_HEADERS.deployments]: '{not valid json',
+        'x-byok-base-url': 'https://my.azure.com/openai',
+        'x-byok-deployments': JSON.stringify({ 'gpt-5.4': 'my-gpt54' }),
       },
       body: JSON.stringify({
         model: 'gpt-5.4',
@@ -154,28 +144,5 @@ describe('chat route — BYOK header parsing', () => {
     });
     await POST(req);
     expect(getModel).toHaveBeenCalledWith('gpt-5.4', undefined);
-  });
-
-  it('C2 regression: deployment missing for selected model → 400 byokModelMissing', async () => {
-    vi.mocked(getModel).mockImplementationOnce(() => {
-      throw new Error('BYOK override is missing a deployment name for model gpt-5.4');
-    });
-    const req = new Request('http://test/api/chat', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [BYOK_HEADERS.key]: 'sk-test',
-        [BYOK_HEADERS.baseUrl]: 'https://my.azure.com/openai',
-        [BYOK_HEADERS.deployments]: JSON.stringify({ 'gpt-5.4-mini': 'mini-dep' }),
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.4',
-        messages: [{ role: 'user', parts: [{ type: 'text', text: 'hi' }] }],
-      }),
-    });
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body).toEqual({ error: 'byokModelMissing', model: 'gpt-5.4' });
   });
 });

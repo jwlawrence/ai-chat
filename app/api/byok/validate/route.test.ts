@@ -22,7 +22,7 @@ describe('POST /api/byok/validate', () => {
   it('401 when unauthenticated', async () => {
     const { getUserId } = await import('@/lib/auth');
     (getUserId as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
-    const res = await call({ key: 'k', baseUrl: 'https://x.example.com', deploymentName: 'd' });
+    const res = await call({ key: 'k' });
     expect(res.status).toBe(401);
   });
 
@@ -31,8 +31,9 @@ describe('POST /api/byok/validate', () => {
     expect(res.status).toBe(400);
   });
 
-  it('400 when schema fails (missing key)', async () => {
-    const res = await call({ baseUrl: 'https://x.example.com', deploymentName: 'd' });
+  it('400 when schema fails (missing or blank key)', async () => {
+    expect((await call({})).status).toBe(400);
+    const res = await call({ key: '   ' });
     expect(res.status).toBe(400);
   });
 
@@ -42,14 +43,14 @@ describe('POST /api/byok/validate', () => {
       ok: false,
       error: 'HTTP 401',
     });
-    const res = await call({ key: 'k', baseUrl: 'https://x.example.com', deploymentName: 'd' });
+    const res = await call({ key: 'k' });
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body).toEqual({ ok: false, error: 'HTTP 401' });
   });
 
   it('200 with ok:true when validate succeeds', async () => {
-    const res = await call({ key: 'k', baseUrl: 'https://x.example.com', deploymentName: 'd' });
+    const res = await call({ key: 'k' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
   });

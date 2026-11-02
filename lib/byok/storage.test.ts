@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ByokRecord, clearByok, loadByok, saveByok } from './storage';
 
-const STORAGE_KEY = 'pac.byok.v1';
+const STORAGE_KEY = 'pac.byok.v2';
+const LEGACY_STORAGE_KEY = 'pac.byok.v1';
 
 interface MockStorage {
   store: Map<string, string>;
@@ -10,8 +11,10 @@ interface MockStorage {
   removeItem(k: string): void;
 }
 
+let mock: MockStorage;
+
 beforeEach(() => {
-  const mock: MockStorage = {
+  mock = {
     store: new Map<string, string>(),
     getItem(k: string) {
       return this.store.get(k) ?? null;
@@ -35,38 +38,38 @@ describe('byok storage', () => {
     expect(loadByok()).toBeNull();
   });
 
-  it('round-trips a record', () => {
-    const record: ByokRecord = {
-      key: 'sk-xxx',
-      baseUrl: 'https://my-resource.openai.azure.com',
-      deployments: { 'gpt-5.4-mini': 'my-deployment' },
-    };
+  it('round-trips a Gateway key record', () => {
+    const record: ByokRecord = { key: 'vck_xxx' };
     saveByok(record);
     expect(loadByok()).toEqual(record);
   });
 
   it('clear removes the record', () => {
-    saveByok({ key: 'k', baseUrl: 'https://a.example.com', deployments: { x: 'y' } });
+    saveByok({ key: 'vck_xxx' });
     clearByok();
     expect(loadByok()).toBeNull();
   });
 
   it('returns null on corrupted JSON', () => {
-    (globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void }).setItem(
-      STORAGE_KEY,
-      '{not json',
-    );
+    mock.setItem(STORAGE_KEY, '{not json');
     expect(loadByok()).toBeNull();
   });
 
-  it('round-trips a record with apiVersion', () => {
-    const record: ByokRecord = {
-      key: 'sk-xxx',
-      baseUrl: 'https://my-resource.openai.azure.com',
-      deployments: { 'gpt-5.4-mini': 'my-deployment' },
-      apiVersion: '2025-04-01-preview',
-    };
-    saveByok(record);
-    expect(loadByok()).toEqual(record);
+  it('returns null on a record with an empty key', () => {
+    mock.setItem(STORAGE_KEY, JSON.stringify({ key: '   ' }));
+    expect(loadByok()).toBeNull();
+  });
+
+  it('ignores an Azure-era record and removes it from storage', () => {
+    mock.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({
+        key: 'azure-secret',
+        baseUrl: 'https://my-resource.openai.azure.com',
+        deployments: { 'gpt-5.4-mini': 'my-deployment' },
+      }),
+    );
+    expect(loadByok()).toBeNull();
+    expect(mock.getItem(LEGACY_STORAGE_KEY)).toBeNull();
   });
 });
