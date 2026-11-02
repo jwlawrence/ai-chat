@@ -1,6 +1,6 @@
-# AI Chat (Foundry)
+# AI Chat
 
-Single-user Next.js chat against an Azure AI Foundry deployment (GPT-5.3+) with Postgres-backed session save/load.
+Next.js chat that answers with generated UI, served by OpenAI models through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway), with Postgres-backed session save/load.
 
 ## Setup
 
@@ -30,13 +30,19 @@ binary and Storybook refuses to start.
 ## Env vars
 
 - `POSTGRES_URL` — Neon / Vercel Postgres connection string.
-- `AZURE_FOUNDRY_API_KEY` — Foundry API key.
-- `AZURE_FOUNDRY_GPT_URL` — base URL for the GPT-5.3+ deployment (the `…/models` root).
+- `AI_GATEWAY_API_KEY` — Vercel AI Gateway API key (Vercel dashboard → AI Gateway → API Keys). The only model credential the app needs.
 - `CONTEXT_WINDOW_MESSAGES` — sliding window size (default 50).
 
 ## Notes
 
-- AI SDK v6 with `@ai-sdk/openai-compatible`. Foundry expects the `api-key` header — see `lib/ai/providers.ts`.
+- AI SDK v6 with the bundled AI Gateway provider (`createGateway` from `ai`). Model ids map to
+  gateway slugs (`openai/<id>`) in one place — see `lib/ai/providers.ts`. Every turn is sent
+  stateless (`store: false`); the app owns conversation history.
+- BYOK: a signed-in user can paste their own AI Gateway key on `/settings`; it is kept in the
+  browser and sent as a request header, and their turns bypass the budget caps.
+- Cutover from the old Azure AI Foundry deployment: run `scripts/cutover-to-ai-gateway.sh`
+  once to create the key and swap the Vercel environment variables.
+- Domain vocabulary lives in `GLOSSARY.md`; provider decisions in `docs/adr/`.
 - Sessions and messages are persisted in `onFinish`; aborted turns are discarded.
 - New-session id is sent to the client via a `data-session` event mid-stream; the client `router.replace()`s.
 - DB driver is `postgres` (postgres-js) via `drizzle-orm/postgres-js` — substituted for `@vercel/postgres` because the package isn't in our pnpm registry mirror. The connection string format is identical.

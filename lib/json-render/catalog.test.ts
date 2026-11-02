@@ -272,7 +272,7 @@ describe('catalogPrompt', () => {
   });
 
   it('catalogPrompt fits within the expected size envelope', () => {
-    // catalogPrompt is the stable system-prompt prefix on every chat turn (Azure
+    // catalogPrompt is the stable system-prompt prefix on every chat turn (OpenAI
     // auto-cache prefix). Phase 1 produced ~3.6 KB; Phase 2 added local-action docs (~8 KB);
     // Phase 3 added model-mode docs (~10 KB); Phase 4 added endpoint section
     // (~12 KB); Phase 4.1 added dynamic-prop section + weather example (~17 KB);

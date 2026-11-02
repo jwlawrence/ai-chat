@@ -51,9 +51,9 @@ screens are the same generated system as its answers.
 - Sign-in (Google or GitHub OAuth) unlocks free typing, a larger daily cap, persistent
   history, `webSearch`, and BYOK. Signing in re-parents the current device's anonymous chat
   sessions onto the account — best-effort, never blocking sign-in.
-- Runs on Vercel at `https://ai-chat-by-josh.vercel.app` against an Azure AI Foundry
-  deployment, with Postgres (Neon/Vercel Postgres) for sessions, messages, and the usage
-  ledger.
+- Runs on Vercel at `https://ai-chat-by-josh.vercel.app`; model turns go through Vercel AI
+  Gateway to OpenAI models, with Postgres (Neon/Vercel Postgres) for sessions, messages, and
+  the usage ledger.
 
 ## Capabilities and Constraints
 
@@ -73,8 +73,9 @@ screens are the same generated system as its answers.
 - Auth cards, the quota wall, and the BYOK settings form are currently rendered through
   json-render rather than hand-built React. This expresses the positioning but is not itself
   a frozen requirement.
-- Non-BYOK traffic is locked to `gpt-5.4-mini`; BYOK users may target their own deployments.
-  Model IDs live in `lib/ai/models.ts`, prices in `lib/ai/pricing.ts`.
+- Non-BYOK traffic is locked to `gpt-5.4-mini`; BYOK users bring their own AI Gateway key
+  and bill to their own Vercel account. Model IDs live in `lib/ai/models.ts`, gateway slugs
+  in `lib/ai/providers.ts`, prices in `lib/ai/pricing.ts`.
 - Per-turn output ceiling of 10,000 tokens (`MAX_OUTPUT_TOKENS_PER_TURN`) and a sliding
   context window of 50 messages (`CONTEXT_WINDOW_MESSAGES`).
 
@@ -91,8 +92,8 @@ screens are the same generated system as its answers.
 **Explicitly undecided:**
 
 - No accessibility standard or conformance target has been agreed for this project.
-- Pricing figures in `lib/ai/pricing.ts` originated as estimates; whether they have been
-  verified against current Azure Foundry pricing is not recorded.
+- Pricing figures in `lib/ai/pricing.ts` originated as estimates; they have not been verified
+  against the AI Gateway catalog (`https://ai-gateway.vercel.sh/v1/models`).
 - LinkedIn OAuth was planned but is not implemented; only Google and GitHub are wired up.
   Whether LinkedIn is still wanted is undecided.
 

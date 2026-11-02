@@ -1,7 +1,8 @@
 import type { ModelId } from './models';
 
 /**
- * Per-model pricing + capacity. Update these as Azure Foundry pricing changes.
+ * Per-model pricing + capacity. Update these as AI Gateway list prices change
+ * (`https://ai-gateway.vercel.sh/v1/models` publishes per-token rates).
  * Rates are USD per 1,000,000 tokens. `maxContextTokens` is the model's full window.
  */
 export type ModelPricing = {

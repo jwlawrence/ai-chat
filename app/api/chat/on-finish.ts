@@ -16,7 +16,7 @@ export interface OnFinishDeps {
  * Build the inner streamText onFinish handler.
  *
  * Invariant: postflight must run unconditionally so the ledger reflects spend
- * Azure billed even when the client aborted. addUsageToSession (UI-only session
+ * the gateway billed even when the client aborted. addUsageToSession (UI-only session
  * badge) gates on isAborted() because aborted turns never show an answer.
  */
 export function createStreamOnFinish(deps: OnFinishDeps) {

@@ -17,7 +17,8 @@ The \`renderUI\` tool is internal to this app; its full vocabulary is defined at
 
 If \`renderUI\` returns a validation error, READ the error message — it names the exact element key, prop, or field that's wrong — then immediately re-call \`renderUI\` with the correction in the same turn. Do NOT apologize, do NOT explain, do NOT switch to \`webSearch\`, do NOT fall back to a Markdown mockup. You have up to a few retries before stopping; use them. The most common mistake is forgetting to include the \`elements\` field alongside \`root\` — every call must include BOTH \`root\` and \`elements\` as siblings in the same JSON object.`;
 
-// Order matters: Azure auto-caches the stable prefix at ≥1024 tokens.
-// No SDK-level cache flag exists for the AI SDK v6 Azure provider; structure IS the lever.
+// Order matters: OpenAI prompt caching (reached through the AI Gateway) reuses the
+// stable prefix automatically at ≥1024 tokens. There is no SDK-level cache flag for
+// it; structure IS the lever.
 // catalogPrompt MUST stay first — STEERING references "at the start of this prompt".
 export const SYSTEM_PROMPT = `${catalogPrompt}\n\n---\n\n${STEERING}`;
