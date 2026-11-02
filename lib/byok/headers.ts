@@ -1,11 +1,9 @@
 import type { ProviderOverride } from '@/lib/ai/providers';
-import type { ByokRecord } from './storage';
+import { type ByokRecord, MAX_GATEWAY_KEY_LENGTH, gatewayKeySchema } from './storage';
 
 export const BYOK_HEADERS = {
   key: 'x-byok-key',
 } as const;
-
-const MAX_KEY_LENGTH = 512;
 
 /** Serialize a BYOK record into the headers sent with every chat request. */
 export function recordToHeaders(record: ByokRecord): Record<string, string> {
@@ -22,8 +20,7 @@ export function recordToHeaders(record: ByokRecord): Record<string, string> {
  */
 export function headersToOverride(headers: Headers): ProviderOverride | undefined {
   const raw = headers.get(BYOK_HEADERS.key);
-  if (!raw || raw.length > MAX_KEY_LENGTH) return undefined;
-  const apiKey = raw.trim();
-  if (!apiKey) return undefined;
-  return { apiKey };
+  if (!raw || raw.length > MAX_GATEWAY_KEY_LENGTH) return undefined;
+  const parsed = gatewayKeySchema.safeParse(raw);
+  return parsed.success ? { apiKey: parsed.data } : undefined;
 }

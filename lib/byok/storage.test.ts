@@ -73,3 +73,12 @@ describe('byok storage', () => {
     expect(mock.getItem(LEGACY_STORAGE_KEY)).toBeNull();
   });
 });
+
+describe('gatewayKeySchema', () => {
+  it('trims and accepts a normal key, rejects blank and oversized keys', async () => {
+    const { gatewayKeySchema, MAX_GATEWAY_KEY_LENGTH } = await import('./storage');
+    expect(gatewayKeySchema.parse('  vck_xxx ')).toBe('vck_xxx');
+    expect(gatewayKeySchema.safeParse('   ').success).toBe(false);
+    expect(gatewayKeySchema.safeParse('v'.repeat(MAX_GATEWAY_KEY_LENGTH + 1)).success).toBe(false);
+  });
+});

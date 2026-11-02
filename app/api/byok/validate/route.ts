@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { getUserId } from '@/lib/auth';
+import { gatewayKeySchema } from '@/lib/byok/storage';
 import { validateByokCredentials } from '@/lib/byok/validate';
 
 export const runtime = 'nodejs';
 
 const Body = z.object({
-  key: z.string().trim().min(1),
+  key: gatewayKeySchema,
 });
 
 export async function POST(req: Request) {

@@ -4,8 +4,14 @@ const KEY = 'pac.byok.v2';
 /** Azure-era record (key + base URL + deployment map). Unusable now; purged on load. */
 const LEGACY_KEY = 'pac.byok.v1';
 
+/** Longest Gateway key we accept anywhere: header, validate body, browser record. */
+export const MAX_GATEWAY_KEY_LENGTH = 512;
+
+/** A Gateway key as the app accepts it: non-blank once trimmed, bounded. */
+export const gatewayKeySchema = z.string().trim().min(1).max(MAX_GATEWAY_KEY_LENGTH);
+
 export const byokRecordSchema = z.object({
-  key: z.string().trim().min(1),
+  key: gatewayKeySchema,
 });
 export type ByokRecord = z.infer<typeof byokRecordSchema>;
 

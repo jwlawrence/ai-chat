@@ -336,9 +336,9 @@ export async function POST(req: Request) {
   // so the chat transcript stays clean.
   const windowed = applyRichChipPrompts(incoming.slice(-CONTEXT_WINDOW));
 
-  // Resolve the model instance before entering the stream so a provider
-  // misconfiguration (missing app key) surfaces as a 500 at the request
-  // boundary rather than an opaque stream abort.
+  // Resolve the model instance before entering the stream so a missing
+  // AI_GATEWAY_API_KEY surfaces as a 500 at the request boundary rather than
+  // an opaque stream abort.
   const modelInstance = getModel(model, byokOverride);
 
   const stream = createUIMessageStream({

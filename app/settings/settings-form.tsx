@@ -21,7 +21,7 @@ const SPEC: Spec = {
       type: 'Input',
       props: {
         name: 'key',
-        label: 'Vercel AI Gateway API key',
+        label: 'Vercel AI Gateway key',
         kind: 'password',
         placeholder: 'vck_…',
       },
@@ -43,7 +43,7 @@ function SubmitButton({ onResult }: { onResult: (s: SubmitState) => void }) {
   async function handleClick() {
     const key = (store.get('/byok/key') as string | undefined)?.trim();
     if (!key) {
-      onResult({ kind: 'error', message: 'An AI Gateway API key is required.' });
+      onResult({ kind: 'error', message: 'A Gateway key is required.' });
       return;
     }
     store.set('/validating', true);
@@ -77,7 +77,7 @@ function SubmitButton({ onResult }: { onResult: (s: SubmitState) => void }) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         onResult({
           kind: 'error',
-          message: body.error ?? 'AI Gateway rejected the credentials.',
+          message: body.error ?? 'AI Gateway rejected the key.',
         });
       } else {
         onResult({ kind: 'error', message: `Request failed (${res.status})` });

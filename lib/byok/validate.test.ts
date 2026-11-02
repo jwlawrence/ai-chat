@@ -47,6 +47,6 @@ describe('validateByokCredentials', () => {
     vi.mocked(generateText).mockRejectedValueOnce({});
     const r = await validateByokCredentials({ key: 'vck_bad' });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe('AI Gateway rejected the credentials (no details)');
+    if (!r.ok) expect(r.error).toBe('AI Gateway rejected the key (no details)');
   });
 });

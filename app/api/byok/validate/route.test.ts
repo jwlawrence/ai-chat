@@ -33,7 +33,8 @@ describe('POST /api/byok/validate', () => {
 
   it('400 when schema fails (missing or blank key)', async () => {
     expect((await call({})).status).toBe(400);
-    const res = await call({ key: '   ' });
+    expect((await call({ key: '   ' })).status).toBe(400);
+    const res = await call({ key: 'v'.repeat(513) });
     expect(res.status).toBe(400);
   });
 

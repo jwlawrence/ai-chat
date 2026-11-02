@@ -16,7 +16,7 @@ function extractErrorMessage(err: unknown): string {
     if (typeof o.cause?.message === 'string' && o.cause.message) return o.cause.message;
     if (typeof o.status === 'number') return `HTTP ${o.status}`;
   }
-  return 'AI Gateway rejected the credentials (no details)';
+  return 'AI Gateway rejected the key (no details)';
 }
 
 /**

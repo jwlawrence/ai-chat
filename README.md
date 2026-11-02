@@ -30,7 +30,7 @@ binary and Storybook refuses to start.
 ## Env vars
 
 - `POSTGRES_URL` — Neon / Vercel Postgres connection string.
-- `AI_GATEWAY_API_KEY` — Vercel AI Gateway API key (Vercel dashboard → AI Gateway → API Keys). The only model credential the app needs.
+- `AI_GATEWAY_API_KEY` — the app's Gateway key (Vercel dashboard → AI Gateway → API Keys). The only model credential the app needs.
 - `CONTEXT_WINDOW_MESSAGES` — sliding window size (default 50).
 
 ## Notes
