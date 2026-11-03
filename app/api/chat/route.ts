@@ -336,21 +336,10 @@ export async function POST(req: Request) {
   // so the chat transcript stays clean.
   const windowed = applyRichChipPrompts(incoming.slice(-CONTEXT_WINDOW));
 
-  // Resolve the model instance before entering the stream so a missing BYOK
-  // deployment surfaces as a clean 400 rather than an opaque stream abort.
-  let modelInstance: ReturnType<typeof getModel>;
-  try {
-    modelInstance = getModel(model, byokOverride);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg.startsWith('BYOK override is missing a deployment name')) {
-      return new Response(JSON.stringify({ error: 'byokModelMissing', model }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    throw err;
-  }
+  // Resolve the model instance before entering the stream so a missing
+  // AI_GATEWAY_API_KEY surfaces as a 500 at the request boundary rather than
+  // an opaque stream abort.
+  const modelInstance = getModel(model, byokOverride);
 
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
@@ -366,10 +355,10 @@ export async function POST(req: Request) {
         model: modelInstance,
         system: SYSTEM_PROMPT,
         messages: await convertToModelMessages(windowed),
-        // Required, not optional: without it the Responses provider replays
+        // Required, not optional: without it the Responses converter replays
         // prior turns as `item_reference` pointers into server-side storage
-        // Azure does not keep, and every turn after the first 400s. See the
-        // constant's doc comment for the full mechanism.
+        // this app never relies on, and every turn after the first can 400.
+        // See the constant's doc comment for the full mechanism.
         providerOptions: STATELESS_PROVIDER_OPTIONS,
         tools,
         // Tool gating across step chain:

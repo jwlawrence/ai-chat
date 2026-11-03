@@ -38,7 +38,7 @@ describe('createStreamOnFinish', () => {
   });
 
   it('runs postflight but SKIPS addUsageToSession when aborted', async () => {
-    // Invariant: Azure billed, ledger must record; session badge can stay stale.
+    // Invariant: the gateway billed, ledger must record; session badge can stay stale.
     const onFinish = createStreamOnFinish(deps({ isAborted: () => true }));
     await onFinish({ totalUsage: FAKE_USAGE });
     expect(postflight).toHaveBeenCalledTimes(1);

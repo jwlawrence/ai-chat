@@ -445,7 +445,7 @@ export function validateElementProps(
 }
 
 // ---------------------------------------------------------------------------
-// catalogPrompt — stable system-prompt prefix for Azure auto-cache
+// catalogPrompt — stable system-prompt prefix for OpenAI prompt caching
 // ---------------------------------------------------------------------------
 
 /**
@@ -1037,7 +1037,7 @@ function buildCatalogPrompt(): string {
 /**
  * A concise string describing all catalog components and their props.
  * Built from the catalog definition at module load time; placed at the start
- * of `SYSTEM_PROMPT` as the stable cacheable prefix so Azure auto-cache can
+ * of `SYSTEM_PROMPT` as the stable cacheable prefix so OpenAI prompt caching can
  * reuse it across turns. The renderUI tool description points the model to
  * the system prompt rather than repeating the vocabulary inline.
  *

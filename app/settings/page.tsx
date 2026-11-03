@@ -19,10 +19,11 @@ export default async function SettingsPage() {
         <ArrowLeft className="size-4" aria-hidden="true" />
         Back to chat
       </Link>
-      <h1 className="font-semibold text-3xl tracking-tight">Bring your own Azure key</h1>
+      <h1 className="font-semibold text-3xl tracking-tight">Bring your own AI Gateway key</h1>
       <p className="text-sm text-muted-foreground">
-        Enter your Azure Foundry credentials. The key lives in your browser only; it&apos;s sent on
-        each chat request via a header and we never persist it server-side.
+        Enter a Vercel AI Gateway key and your chats bill to your own Vercel account instead of
+        counting against the daily cap. The key lives in your browser only; it&apos;s sent on each
+        chat request via a header and we never persist it server-side.
       </p>
       <SettingsForm />
     </main>

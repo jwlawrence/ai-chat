@@ -26,8 +26,7 @@ jobs:
 
     env:
       POSTGRES_URL: postgres://test:test@localhost:5432/ai_chat_test
-      AZURE_FOUNDRY_API_KEY: test-key
-      AZURE_FOUNDRY_GPT_URL: https://example-test.services.ai.azure.com/models
+      AI_GATEWAY_API_KEY: test-key
       TRUST_COOKIE_SECRET: test-trust-secret
       ANON_COOKIE_SECRET: test-anon-secret
 

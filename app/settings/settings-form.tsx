@@ -15,37 +15,15 @@ const SPEC: Spec = {
     form: {
       type: 'Form',
       props: { name: 'byok' },
-      children: ['key', 'baseUrl', 'gpt-5.4-mini', 'gpt-5.4', 'apiVersion'],
+      children: ['key'],
     },
     key: {
       type: 'Input',
-      props: { name: 'key', label: 'API key', kind: 'password' },
-      children: [],
-    },
-    baseUrl: {
-      type: 'Input',
       props: {
-        name: 'baseUrl',
-        label: 'Azure Foundry base URL',
-        placeholder: 'https://<resource>.openai.azure.com',
-      },
-      children: [],
-    },
-    'gpt-5.4-mini': {
-      type: 'Input',
-      props: { name: 'gpt-5.4-mini', label: 'Deployment name for gpt-5.4-mini (required)' },
-      children: [],
-    },
-    'gpt-5.4': {
-      type: 'Input',
-      props: { name: 'gpt-5.4', label: 'Deployment name for gpt-5.4 (optional)' },
-      children: [],
-    },
-    apiVersion: {
-      type: 'Input',
-      props: {
-        name: 'apiVersion',
-        label: 'API version (optional, default 2025-04-01-preview)',
+        name: 'key',
+        label: 'Vercel AI Gateway key',
+        kind: 'password',
+        placeholder: 'vck_…',
       },
       children: [],
     },
@@ -64,20 +42,13 @@ function SubmitButton({ onResult }: { onResult: (s: SubmitState) => void }) {
 
   async function handleClick() {
     const key = (store.get('/byok/key') as string | undefined)?.trim();
-    const baseUrl = (store.get('/byok/baseUrl') as string | undefined)?.trim();
-    const miniDeployment = (store.get('/byok/gpt-5.4-mini') as string | undefined)?.trim();
-    const fullDeployment = (store.get('/byok/gpt-5.4') as string | undefined)?.trim();
-    const apiVersion = (store.get('/byok/apiVersion') as string | undefined)?.trim();
-    if (!key || !baseUrl || !miniDeployment) {
-      onResult({
-        kind: 'error',
-        message: 'Key, base URL, and gpt-5.4-mini deployment are required.',
-      });
+    if (!key) {
+      onResult({ kind: 'error', message: 'A Gateway key is required.' });
       return;
     }
     store.set('/validating', true);
     onResult({ kind: 'validating' });
-    // 30s ceiling: longer than any reasonable Azure round-trip, short enough
+    // 30s ceiling: longer than any reasonable gateway round-trip, short enough
     // that a stuck request doesn't leave the button greyed out indefinitely.
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30_000);
@@ -85,23 +56,11 @@ function SubmitButton({ onResult }: { onResult: (s: SubmitState) => void }) {
       const res = await fetch('/api/byok/validate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          key,
-          baseUrl,
-          deploymentName: miniDeployment,
-          ...(apiVersion ? { apiVersion } : {}),
-        }),
+        body: JSON.stringify({ key }),
         signal: controller.signal,
       });
       if (res.status === 200) {
-        const deployments: Record<string, string> = { 'gpt-5.4-mini': miniDeployment };
-        if (fullDeployment) deployments['gpt-5.4'] = fullDeployment;
-        const record: ByokRecord = {
-          key,
-          baseUrl,
-          deployments,
-          ...(apiVersion ? { apiVersion } : {}),
-        };
+        const record: ByokRecord = { key };
         try {
           saveByok(record);
         } catch (err) {
@@ -116,7 +75,10 @@ function SubmitButton({ onResult }: { onResult: (s: SubmitState) => void }) {
         onResult({ kind: 'error', message: 'Sign in required.' });
       } else if (res.status === 422) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        onResult({ kind: 'error', message: body.error ?? 'Azure rejected the credentials.' });
+        onResult({
+          kind: 'error',
+          message: body.error ?? 'AI Gateway rejected the key.',
+        });
       } else {
         onResult({ kind: 'error', message: `Request failed (${res.status})` });
       }
@@ -152,7 +114,7 @@ function StatusAlert({
       <Alert>
         <AlertTitle>Saved</AlertTitle>
         <AlertDescription>
-          BYOK credentials are stored locally and will be sent on each chat.
+          Your Gateway key is stored in this browser only and sent with each chat request.
         </AlertDescription>
       </Alert>
     );
